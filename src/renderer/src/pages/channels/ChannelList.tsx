@@ -7,6 +7,7 @@ import {
   Eye,
   Download,
   Tag,
+  History,
 } from 'lucide-react';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
@@ -20,6 +21,7 @@ interface ChannelListProps {
   onRemove: (channelId: string) => void;
   onBulkRemove: (channelIds: string[]) => Promise<void> | void;
   onEditCategories: (channel: ChannelInfo) => void;
+  onBackfill: (channelId: string) => void;
   removing: Set<string>;
 }
 
@@ -28,8 +30,23 @@ export function ChannelList({
   onRemove,
   onBulkRemove,
   onEditCategories,
+  onBackfill,
   removing,
 }: ChannelListProps) {
+  const [backfilling, setBackfilling] = useState<Set<string>>(new Set());
+
+  async function triggerBackfill(channelId: string) {
+    setBackfilling((b) => new Set(b).add(channelId));
+    try {
+      await onBackfill(channelId);
+    } finally {
+      setBackfilling((b) => {
+        const next = new Set(b);
+        next.delete(channelId);
+        return next;
+      });
+    }
+  }
   const [selected, setSelected] = useState<Set<string>>(new Set());
 
   // Drop selections that no longer exist (after deletion or filter change).
@@ -172,6 +189,15 @@ export function ChannelList({
                   </span>
                 </div>
               </div>
+              <Button
+                onClick={() => triggerBackfill(c.id)}
+                disabled={backfilling.has(c.id) || isRemoving}
+                variant="ghost"
+                size="sm"
+                title="Sincronizar histórico completo (lê todos os vídeos do canal — útil pra canais antigos cadastrados antes do full-sync)"
+              >
+                <History className={`h-4 w-4 ${backfilling.has(c.id) ? 'animate-spin' : ''}`} />
+              </Button>
               <Button
                 onClick={() => onEditCategories(c)}
                 variant="ghost"

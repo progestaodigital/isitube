@@ -129,7 +129,8 @@ export async function addChannel(
   let firstSyncCount = 0;
   let firstSyncError: string | null = null;
   try {
-    firstSyncCount = await ingestAllVideosForChannel(channel.id, channel.youtubeId, provider);
+    const result = await ingestAllVideosForChannel(channel.id, channel.youtubeId, provider);
+    firstSyncCount = result.ingested;
     await prisma.channel.update({
       where: { id: channel.id },
       data: { lastUpdatedAt: new Date() },
@@ -152,20 +153,32 @@ export async function addChannel(
 /**
  * Fetch every video from a channel's uploads playlist and persist them with
  * an initial snapshot each. Used at channel-add time and as a recovery path.
+ *
+ * Soft-deleted videos are SKIPPED — the user explicitly removed them from
+ * monitoring; we don't resurrect them on subsequent syncs.
  */
 async function ingestAllVideosForChannel(
   channelDbId: string,
   channelYoutubeId: string,
   provider: ChannelProvider
-): Promise<number> {
+): Promise<{ ingested: number; skippedDeleted: number }> {
   const fetched = await provider.listAllVideos(channelYoutubeId);
-  if (fetched.length === 0) return 0;
+  if (fetched.length === 0) return { ingested: 0, skippedDeleted: 0 };
   const prisma = getPrisma();
+
+  let ingested = 0;
+  let skippedDeleted = 0;
 
   for (const v of fetched) {
     const existing = await prisma.video.findUnique({
       where: { youtubeId: v.youtubeId },
     });
+
+    if (existing?.deletedAt) {
+      skippedDeleted += 1;
+      continue;
+    }
+
     let videoRecordId: string;
     if (existing) {
       await prisma.video.update({
@@ -179,7 +192,6 @@ async function ingestAllVideosForChannel(
           commentCount: v.commentCount,
           durationSec: v.durationSec,
           publishedAt: new Date(v.publishedAt),
-          deletedAt: null,
         },
       });
       videoRecordId = existing.id;
@@ -199,6 +211,7 @@ async function ingestAllVideosForChannel(
       });
       videoRecordId = created.id;
     }
+    ingested += 1;
 
     await prisma.videoSnapshot.create({
       data: {
@@ -210,7 +223,62 @@ async function ingestAllVideosForChannel(
     });
   }
 
-  return fetched.length;
+  return { ingested, skippedDeleted };
+}
+
+/**
+ * Public backfill: re-runs the full-catalog ingest for an existing channel.
+ * Used by the renderer's "Sincronizar histórico completo" button — channels
+ * registered before the full-sync change only have the last 30 days of videos.
+ */
+export async function backfillChannel(channelId: string): Promise<{
+  success: boolean;
+  message: string;
+  ingested: number;
+  skippedDeleted: number;
+}> {
+  if (!(await isYouTubeConfigured())) {
+    return {
+      success: false,
+      message: 'YouTube Data API key não configurada ou inválida.',
+      ingested: 0,
+      skippedDeleted: 0,
+    };
+  }
+  const channel = await getPrisma().channel.findUnique({ where: { id: channelId } });
+  if (!channel || channel.deletedAt) {
+    return { success: false, message: 'Canal não encontrado.', ingested: 0, skippedDeleted: 0 };
+  }
+  const provider = await getProvider();
+  try {
+    const { ingested, skippedDeleted } = await ingestAllVideosForChannel(
+      channel.id,
+      channel.youtubeId,
+      provider
+    );
+    await getPrisma().channel.update({
+      where: { id: channel.id },
+      data: { lastUpdatedAt: new Date() },
+    });
+    return {
+      success: true,
+      message:
+        `${ingested} vídeo${ingested === 1 ? '' : 's'} sincronizado${ingested === 1 ? '' : 's'}` +
+        (skippedDeleted > 0
+          ? ` (${skippedDeleted} excluído${skippedDeleted === 1 ? '' : 's'} ignorado${skippedDeleted === 1 ? '' : 's'})`
+          : '') +
+        '.',
+      ingested,
+      skippedDeleted,
+    };
+  } catch (err) {
+    return {
+      success: false,
+      message: err instanceof Error ? err.message : String(err),
+      ingested: 0,
+      skippedDeleted: 0,
+    };
+  }
 }
 
 export async function removeChannel(channelId: string): Promise<void> {
@@ -451,6 +519,8 @@ export async function runUpdateAll(
         const existing = await prisma.video.findUnique({
           where: { youtubeId: v.youtubeId },
         });
+        // Respect explicit user deletion — never resurrect soft-deleted videos.
+        if (existing?.deletedAt) continue;
         if (existing) {
           await prisma.video.update({
             where: { id: existing.id },
@@ -462,7 +532,6 @@ export async function runUpdateAll(
               commentCount: v.commentCount,
               durationSec: v.durationSec,
               publishedAt: new Date(v.publishedAt),
-              deletedAt: null,
             },
           });
         } else {

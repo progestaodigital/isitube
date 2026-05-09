@@ -1,4 +1,5 @@
-import { Eye, ThumbsUp, Calendar, Flame, ExternalLink } from 'lucide-react';
+import { useState } from 'react';
+import { Eye, ThumbsUp, Calendar, Flame, ExternalLink, Trash2 } from 'lucide-react';
 import type { VideoInfo } from '@shared/types';
 import { useVideoDetailStore } from '../../stores/videoDetail';
 import { useLookbackDays } from '../../hooks/useLookbackDays';
@@ -6,11 +7,13 @@ import { cn } from '../../lib/cn';
 
 interface VideoCardProps {
   video: VideoInfo;
+  onDelete?: (videoId: string) => void;
 }
 
-export function VideoCard({ video }: VideoCardProps) {
+export function VideoCard({ video, onDelete }: VideoCardProps) {
   const open = useVideoDetailStore((s) => s.open);
   const lookbackDays = useLookbackDays();
+  const [confirming, setConfirming] = useState(false);
   const pct = video.outlierPercent ?? 0;
   const badgeClass =
     pct >= 500
@@ -18,6 +21,17 @@ export function VideoCard({ video }: VideoCardProps) {
       : pct >= 300
         ? 'bg-amber-500 text-white'
         : 'bg-amber-200 text-amber-800 dark:bg-amber-900 dark:text-amber-300';
+
+  function handleDeleteClick(e: React.MouseEvent) {
+    e.stopPropagation();
+    if (!confirming) {
+      setConfirming(true);
+      // Auto-cancel confirmation after 4s of inactivity.
+      setTimeout(() => setConfirming(false), 4000);
+      return;
+    }
+    onDelete?.(video.id);
+  }
 
   return (
     <button
@@ -47,6 +61,26 @@ export function VideoCard({ video }: VideoCardProps) {
               </span>
             )}
             <ExternalLink className="h-4 w-4 text-zinc-400 opacity-0 transition-opacity group-hover:opacity-100" />
+            {onDelete && (
+              <span
+                role="button"
+                tabIndex={0}
+                onClick={handleDeleteClick}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') handleDeleteClick(e as unknown as React.MouseEvent);
+                }}
+                title={confirming ? 'Confirma — clique de novo' : 'Excluir do monitoramento'}
+                className={cn(
+                  'inline-flex h-6 cursor-pointer items-center gap-1 rounded-full px-1.5 text-[11px] transition-colors',
+                  confirming
+                    ? 'bg-red-600 text-white'
+                    : 'text-zinc-400 opacity-0 hover:bg-red-50 hover:text-red-600 group-hover:opacity-100 dark:hover:bg-red-950/50'
+                )}
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                {confirming && 'confirmar?'}
+              </span>
+            )}
           </div>
         </div>
         {video.channelTitle && (

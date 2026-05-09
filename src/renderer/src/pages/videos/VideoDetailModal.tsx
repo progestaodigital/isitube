@@ -16,6 +16,7 @@ import {
   FileCode,
   Captions,
   AlertTriangle,
+  Trash2,
 } from 'lucide-react';
 import { Modal } from '../../components/ui/Modal';
 import { Button } from '../../components/ui/Button';
@@ -41,6 +42,7 @@ export function VideoDetailModal() {
   const [loading, setLoading] = useState(false);
   const [extracting, setExtracting] = useState(false);
   const [extractingTranscript, setExtractingTranscript] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const refresh = useCallback(async (id: string) => {
     setLoading(true);
@@ -134,6 +136,23 @@ export function VideoDetailModal() {
     }
   }
 
+  async function handleDelete() {
+    if (!videoId || !video) return;
+    const ok = window.confirm(
+      `Excluir "${video.title}" do monitoramento?\n\nEsse vídeo deixará de ser snapshotado nas próximas atualizações e some das listas. ` +
+        `Posso restaurar isso manualmente no banco se precisar — mas pelo app não tem como reverter.`
+    );
+    if (!ok) return;
+    setDeleting(true);
+    try {
+      await window.api.videos.remove(videoId);
+      showToast({ kind: 'info', title: 'Vídeo removido do monitoramento' });
+      close();
+    } finally {
+      setDeleting(false);
+    }
+  }
+
   if (!videoId) return null;
 
   const hasMetadata = Boolean(video?.metadataExtractedAt);
@@ -210,6 +229,16 @@ export function VideoDetailModal() {
               Assistir no YouTube
               <ExternalLink className="h-3.5 w-3.5 opacity-70" />
             </a>
+            <Button
+              onClick={handleDelete}
+              disabled={deleting}
+              variant="ghost"
+              size="sm"
+              className="ml-auto text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30"
+            >
+              <Trash2 className="h-4 w-4" />
+              {deleting ? 'Excluindo...' : 'Excluir do monitoramento'}
+            </Button>
           </div>
 
           <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">

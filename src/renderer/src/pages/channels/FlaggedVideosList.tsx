@@ -10,6 +10,7 @@ interface FlaggedVideosListProps {
   channels: ChannelInfo[];
   filters: FlaggedVideosFilters;
   onFilterChange: (next: FlaggedVideosFilters) => void;
+  onDeleteVideo?: (videoId: string) => void;
 }
 
 export function FlaggedVideosList({
@@ -17,6 +18,7 @@ export function FlaggedVideosList({
   channels,
   filters,
   onFilterChange,
+  onDeleteVideo,
 }: FlaggedVideosListProps) {
   return (
     <div className="space-y-4">
@@ -118,7 +120,7 @@ export function FlaggedVideosList({
       ) : (
         <div className="space-y-2">
           {videos.map((v) => (
-            <VideoCard key={v.id} video={v} />
+            <VideoCard key={v.id} video={v} onDelete={onDeleteVideo} />
           ))}
         </div>
       )}

@@ -145,6 +145,27 @@ export function ChannelsPage() {
     showToast({ kind: 'info', title: 'Agendamento cancelado' });
   }
 
+  async function handleDeleteVideo(videoId: string) {
+    await window.api.videos.remove(videoId);
+    setFlagged((vs) => vs.filter((v) => v.id !== videoId));
+    showToast({ kind: 'info', title: 'Vídeo removido do monitoramento' });
+  }
+
+  async function handleBackfillChannel(channelId: string) {
+    showToast({
+      kind: 'info',
+      title: 'Sincronizando histórico…',
+      description: 'Pode demorar alguns segundos por canal.',
+    });
+    const result = await window.api.channels.backfill(channelId);
+    if (result.success) {
+      showToast({ kind: 'success', title: 'Histórico sincronizado', description: result.message });
+      await Promise.all([refreshChannels(), refreshFlagged()]);
+    } else {
+      showToast({ kind: 'error', title: 'Falha', description: result.message });
+    }
+  }
+
   // Apply the global category filter to the channel list shown in the
   // "Canais cadastrados" tab. Done client-side because we already have all
   // channels loaded — avoids a roundtrip when toggling.
@@ -253,6 +274,7 @@ export function ChannelsPage() {
           channels={channels}
           filters={filters}
           onFilterChange={setFilters}
+          onDeleteVideo={handleDeleteVideo}
         />
       )}
       {tab === 'channels' && (
@@ -261,6 +283,7 @@ export function ChannelsPage() {
           onRemove={handleRemoveChannel}
           onBulkRemove={handleBulkRemoveChannels}
           onEditCategories={setEditingChannel}
+          onBackfill={handleBackfillChannel}
           removing={removing}
         />
       )}

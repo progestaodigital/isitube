@@ -101,6 +101,10 @@ const api: IsitubeAPI = {
       ipcRenderer.invoke('channels:get-flagged-videos', filters),
     getChannelVideos: (channelId: string): Promise<VideoInfo[]> =>
       ipcRenderer.invoke('channels:get-channel-videos', channelId),
+    backfill: (
+      channelId: string
+    ): Promise<{ success: boolean; message: string; ingested: number; skippedDeleted: number }> =>
+      ipcRenderer.invoke('channels:backfill', channelId),
     listUpdateRuns: (limit?: number): Promise<UpdateRunInfo[]> =>
       ipcRenderer.invoke('channels:list-update-runs', limit),
     getStartupAction: (): Promise<StartupAction> =>

@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Sprout, TrendingUp, Calendar, Eye, Search } from 'lucide-react';
+import { Sprout, TrendingUp, Calendar, Eye, Search, Trash2 } from 'lucide-react';
 import { Card } from '../../components/ui/Card';
 import { Input } from '../../components/ui/Input';
 import { SkeletonListRow } from '../../components/ui/Skeleton';
 import { useVideoDetailStore } from '../../stores/videoDetail';
+import { useToastStore } from '../../stores/toast';
+import { cn } from '../../lib/cn';
 import type { ChannelInfo, EvergreenFilters, EvergreenVideo } from '@shared/types';
 
 interface EvergreenTabProps {
@@ -13,8 +15,10 @@ interface EvergreenTabProps {
 
 export function EvergreenTab({ channels, categoryIds = [] }: EvergreenTabProps) {
   const openDetail = useVideoDetailStore((s) => s.open);
+  const showToast = useToastStore((s) => s.show);
 
   const [items, setItems] = useState<EvergreenVideo[]>([]);
+  const [confirmingDelete, setConfirmingDelete] = useState<string | null>(null);
   const [filters, setFilters] = useState<EvergreenFilters>({
     minAgeDays: 30,
     lookbackDays: 30,
@@ -196,49 +200,83 @@ export function EvergreenTab({ channels, categoryIds = [] }: EvergreenTabProps) 
         </Card>
       ) : (
         <div className="space-y-2">
-          {items.map((v, idx) => (
-            <button
-              key={v.id}
-              onClick={() => openDetail(v.id)}
-              className="flex w-full gap-3 rounded-xl border border-zinc-200 bg-white p-3 text-left transition-colors hover:border-zinc-300 dark:border-zinc-800 dark:bg-zinc-900 dark:hover:border-zinc-700"
-            >
-              <div className="flex w-8 shrink-0 items-center justify-center text-sm font-mono font-semibold text-zinc-400">
-                {idx + 1}
-              </div>
-              {v.thumbnailUrl && (
-                <img
-                  src={v.thumbnailUrl}
-                  alt=""
-                  className="h-16 w-28 shrink-0 rounded-lg object-cover"
-                />
-              )}
-              <div className="min-w-0 flex-1">
-                <p className="line-clamp-2 text-sm font-medium">{v.title}</p>
-                <p className="mt-0.5 text-xs text-zinc-500">{v.channelTitle}</p>
-                <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-0.5 text-[11px] text-zinc-600 dark:text-zinc-400">
-                  <span className="inline-flex items-center gap-1">
-                    <Eye className="h-3 w-3" />
-                    {formatCompact(v.totalViewCount)} views totais
-                  </span>
-                  <span className="inline-flex items-center gap-1">
-                    <Calendar className="h-3 w-3" />
-                    publicado {formatRelativeDays(v.publishedAt)}
-                  </span>
-                  {v.basedOn === 'all-time' && (
-                    <span className="text-amber-600 dark:text-amber-400">
-                      média all-time (sem snapshot recente)
-                    </span>
+          {items.map((v, idx) => {
+            const isConfirming = confirmingDelete === v.id;
+            async function handleDelete(e: React.MouseEvent) {
+              e.stopPropagation();
+              if (!isConfirming) {
+                setConfirmingDelete(v.id);
+                setTimeout(() => {
+                  setConfirmingDelete((curr) => (curr === v.id ? null : curr));
+                }, 4000);
+                return;
+              }
+              setConfirmingDelete(null);
+              await window.api.videos.remove(v.id);
+              setItems((items) => items.filter((it) => it.id !== v.id));
+              showToast({ kind: 'info', title: 'Vídeo removido do monitoramento' });
+            }
+            return (
+              <div
+                key={v.id}
+                className="group flex w-full gap-3 rounded-xl border border-zinc-200 bg-white p-3 text-left transition-colors hover:border-zinc-300 dark:border-zinc-800 dark:bg-zinc-900 dark:hover:border-zinc-700"
+              >
+                <button
+                  onClick={() => openDetail(v.id)}
+                  className="flex flex-1 gap-3 text-left"
+                >
+                  <div className="flex w-8 shrink-0 items-center justify-center text-sm font-mono font-semibold text-zinc-400">
+                    {idx + 1}
+                  </div>
+                  {v.thumbnailUrl && (
+                    <img
+                      src={v.thumbnailUrl}
+                      alt=""
+                      className="h-16 w-28 shrink-0 rounded-lg object-cover"
+                    />
                   )}
+                  <div className="min-w-0 flex-1">
+                    <p className="line-clamp-2 text-sm font-medium">{v.title}</p>
+                    <p className="mt-0.5 text-xs text-zinc-500">{v.channelTitle}</p>
+                    <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-0.5 text-[11px] text-zinc-600 dark:text-zinc-400">
+                      <span className="inline-flex items-center gap-1">
+                        <Eye className="h-3 w-3" />
+                        {formatCompact(v.totalViewCount)} views totais
+                      </span>
+                      <span className="inline-flex items-center gap-1">
+                        <Calendar className="h-3 w-3" />
+                        publicado {formatRelativeDays(v.publishedAt)}
+                      </span>
+                      {v.basedOn === 'all-time' && (
+                        <span className="text-amber-600 dark:text-amber-400">
+                          média all-time (sem snapshot recente)
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </button>
+                <div className="flex shrink-0 flex-col items-end justify-between gap-2">
+                  <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-semibold text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400">
+                    <TrendingUp className="h-3 w-3" />
+                    {formatCompact(v.viewsPerDay)}/dia
+                  </span>
+                  <button
+                    onClick={handleDelete}
+                    title={isConfirming ? 'Confirma — clique de novo' : 'Excluir do monitoramento'}
+                    className={cn(
+                      'inline-flex h-6 items-center gap-1 rounded-full px-1.5 text-[11px] transition-colors',
+                      isConfirming
+                        ? 'bg-red-600 text-white'
+                        : 'text-zinc-400 opacity-0 hover:bg-red-50 hover:text-red-600 group-hover:opacity-100 dark:hover:bg-red-950/50'
+                    )}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                    {isConfirming && 'confirmar?'}
+                  </button>
                 </div>
               </div>
-              <div className="flex shrink-0 flex-col items-end">
-                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-semibold text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400">
-                  <TrendingUp className="h-3 w-3" />
-                  {formatCompact(v.viewsPerDay)}/dia
-                </span>
-              </div>
-            </button>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>
