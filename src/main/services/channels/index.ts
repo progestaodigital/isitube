@@ -601,13 +601,36 @@ export async function runUpdateAll(
         });
       }
 
-      // 5) Recompute outliers across the full stored catalog for this channel.
-      const channelVideos = await prisma.video.findMany({
-        where: { channelId: channel.id, deletedAt: null },
+      // 5) Persistent outlier flag — used by 🔥 badges shown on video cards
+      //    across the app (Evergreen, channel detail, etc). Computed against
+      //    a fixed 30-day window for visual consistency. The "Vídeos em
+      //    destaque" tab does its own dynamic-window calculation per request,
+      //    so this flag is only the default-window snapshot.
+      const FLAG_WINDOW_DAYS = 30;
+      const sinceFlag = new Date(Date.now() - FLAG_WINDOW_DAYS * 86_400_000);
+
+      // Reset flag on videos that fell out of the 30d window — they're no
+      // longer "destaque" candidates.
+      await prisma.video.updateMany({
+        where: {
+          channelId: channel.id,
+          deletedAt: null,
+          publishedAt: { lt: sinceFlag },
+          flaggedAsOutlier: true,
+        },
+        data: { flaggedAsOutlier: false },
+      });
+
+      const recentChannelVideos = await prisma.video.findMany({
+        where: {
+          channelId: channel.id,
+          deletedAt: null,
+          publishedAt: { gte: sinceFlag },
+        },
         select: { id: true, viewCount: true },
       });
       const assessment = assessOutliers(
-        channelVideos.map((v) => ({ id: v.id, viewCount: v.viewCount })),
+        recentChannelVideos.map((v) => ({ id: v.id, viewCount: v.viewCount })),
         thresholdPercent
       );
       for (const f of assessment.flagged) {
@@ -701,26 +724,32 @@ function projectUpdateRun(run: {
 // Video queries
 // =============================================================================
 
+/**
+ * Outlier detection — DYNAMIC window edition.
+ *
+ * The cutoff is computed *fresh per request* using the same window the user
+ * selected (default 30d). Each channel's average is calculated only across
+ * its videos published within that same window — videos outside the window
+ * are neither comparators nor candidates. This way, "destaque dos últimos 7
+ * dias" really means "vídeo dos últimos 7 dias acima da média dos vídeos do
+ * canal nos últimos 7 dias" — not against the channel's lifetime average.
+ *
+ * Per-channel scoping ensures small channels can have outliers (the average
+ * adapts to that channel's typical performance).
+ */
 export async function getFlaggedVideos(
   filters: FlaggedVideosFilters = {}
 ): Promise<VideoInfo[]> {
   const prisma = getPrisma();
+  const sinceDays = filters.sinceDays ?? 30;
+  const minPercent = filters.minPercent ?? 150;
+  const since = new Date(Date.now() - sinceDays * 86_400_000);
 
-  const where: Parameters<typeof prisma.video.findMany>[0] = {
+  const candidates = await prisma.video.findMany({
     where: {
       deletedAt: null,
-      flaggedAsOutlier: true,
+      publishedAt: { gte: since },
       ...(filters.channelId ? { channelId: filters.channelId } : {}),
-      ...(filters.sinceDays
-        ? {
-            publishedAt: {
-              gte: new Date(Date.now() - filters.sinceDays * 86_400_000),
-            },
-          }
-        : {}),
-      ...(filters.minPercent
-        ? { outlierPercent: { gte: filters.minPercent } }
-        : {}),
       ...(filters.categoryIds && filters.categoryIds.length > 0
         ? {
             channel: {
@@ -730,13 +759,57 @@ export async function getFlaggedVideos(
         : {}),
       ...durationFilter(filters.videoType),
     },
-    orderBy: { outlierPercent: 'desc' },
-    take: 100,
     include: { channel: { select: { title: true } } },
-  };
+    take: 5000,
+  });
 
-  const videos = await prisma.video.findMany(where);
-  return videos.map(projectVideo);
+  // Group by channel so each channel gets its own baseline.
+  const byChannel = new Map<string, typeof candidates>();
+  for (const v of candidates) {
+    const list = byChannel.get(v.channelId) ?? [];
+    list.push(v);
+    byChannel.set(v.channelId, list);
+  }
+
+  type ScoredVideo = (typeof candidates)[number] & {
+    _outlierPercent: number;
+    _channelAvg: number;
+  };
+  const flagged: ScoredVideo[] = [];
+
+  for (const [, channelVideos] of byChannel) {
+    // Need at least 3 videos in the window to have a meaningful baseline.
+    if (channelVideos.length < 3) continue;
+    const totalViews = channelVideos.reduce((s, v) => s + v.viewCount, 0);
+    const avg = totalViews / channelVideos.length;
+    if (avg <= 0) continue;
+
+    for (const v of channelVideos) {
+      const pct = (v.viewCount / avg) * 100;
+      if (pct >= minPercent) {
+        flagged.push({ ...v, _outlierPercent: pct, _channelAvg: Math.round(avg) });
+      }
+    }
+  }
+
+  flagged.sort((a, b) => b._outlierPercent - a._outlierPercent);
+
+  return flagged.slice(0, 200).map((v) => ({
+    id: v.id,
+    youtubeId: v.youtubeId,
+    channelId: v.channelId,
+    channelTitle: v.channel?.title,
+    title: v.title,
+    thumbnailUrl: v.thumbnailUrl,
+    viewCount: v.viewCount,
+    likeCount: v.likeCount,
+    commentCount: v.commentCount,
+    durationSec: v.durationSec,
+    publishedAt: v.publishedAt.toISOString(),
+    channelAvgViewsAtCheck: v._channelAvg,
+    outlierPercent: v._outlierPercent,
+    flaggedAsOutlier: true,
+  }));
 }
 
 /**

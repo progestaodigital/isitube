@@ -46,16 +46,16 @@ export function FlaggedVideosList({
 
           <Filter label="Período">
             <select
-              value={filters.sinceDays ?? ''}
+              value={filters.sinceDays ?? 30}
               onChange={(e) =>
                 onFilterChange({
                   ...filters,
-                  sinceDays: e.target.value ? Number(e.target.value) : undefined,
+                  sinceDays: Number(e.target.value),
                 })
               }
               className="h-8 rounded-md border border-zinc-300 bg-white px-2 text-xs dark:border-zinc-700 dark:bg-zinc-900"
+              title="A média do canal é calculada nessa mesma janela"
             >
-              <option value="">Tudo</option>
               <option value="7">Últimos 7 dias</option>
               <option value="30">Últimos 30 dias</option>
               <option value="90">Últimos 90 dias</option>
@@ -107,6 +107,10 @@ export function FlaggedVideosList({
             Exportar CSV
           </Button>
         </div>
+        <p className="mt-2 text-[11px] text-zinc-500">
+          Cada vídeo é comparado com a média de views do mesmo canal{' '}
+          <b>na mesma janela escolhida</b>. Mude o período e a média recalcula.
+        </p>
       </Card>
 
       {videos.length === 0 ? (

@@ -34,7 +34,10 @@ export function ChannelsPage() {
   const [tab, setTab] = useState<Tab>('flagged');
   const [channels, setChannels] = useState<ChannelInfo[]>([]);
   const [flagged, setFlagged] = useState<VideoInfo[]>([]);
-  const [filters, setFilters] = useState<FlaggedVideosFilters>({ minPercent: 150 });
+  const [filters, setFilters] = useState<FlaggedVideosFilters>({
+    minPercent: 150,
+    sinceDays: 30,
+  });
   const [categoryFilterIds, setCategoryFilterIds] = useState<string[]>([]);
   const [latestRun, setLatestRun] = useState<UpdateRunInfo | null>(null);
   const [schedule, setSchedule] = useState<ScheduleInfo | null>(null);
