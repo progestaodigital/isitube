@@ -1,0 +1,804 @@
+import { getPrisma } from '../../db';
+import { getSetting, setSetting } from '../settings';
+import { YouTubeMockProvider } from './providers/youtube-mock';
+import { YouTubeRealProvider } from './providers/youtube-real';
+import type { ChannelProvider } from './providers/types';
+import { getCredentialPlainText, getCredentialStatus } from '../credentials';
+import { assessOutliers } from './outlier';
+import { setChannelCategories } from '../categories';
+import type {
+  AddChannelResult,
+  ChannelInfo,
+  FlaggedVideosFilters,
+  StartupAction,
+  UpdateRunInfo,
+  VideoInfo,
+  VideoType,
+} from '@shared/types';
+
+/**
+ * Resolve the active YouTube channel provider:
+ *   - real (YouTube Data API v3) when the user has a valid key
+ *   - mock fallback (deterministic fake data) when not configured —
+ *     useful so the rest of the app keeps working even before the user
+ *     cadastrates a real key. UI layer is responsible for steering the
+ *     user toward configuring a real key (Option A from Phase 8 plan).
+ */
+async function getProvider(): Promise<ChannelProvider> {
+  const status = await getCredentialStatus('youtube');
+  if (status?.status === 'valid' && status.hasValue) {
+    const key = await getCredentialPlainText('youtube');
+    if (key) return new YouTubeRealProvider(key);
+  }
+  return new YouTubeMockProvider();
+}
+
+export async function isYouTubeConfigured(): Promise<boolean> {
+  const status = await getCredentialStatus('youtube');
+  return Boolean(status?.status === 'valid' && status.hasValue);
+}
+
+const DEFAULT_THRESHOLD_PERCENT = 150;
+const DEFAULT_LOOKBACK_DAYS = 30;
+const DEFAULT_SUGGEST_AFTER_HOURS = 24;
+const SUGGESTION_DISMISSED_KEY = 'channels.suggestion_dismissed_until';
+const THRESHOLD_KEY = 'channels.outlier_threshold_percent';
+const LOOKBACK_KEY = 'channels.lookback_days';
+
+// =============================================================================
+// CRUD
+// =============================================================================
+
+export async function addChannel(
+  urlOrId: string,
+  categoryIds: string[] = []
+): Promise<AddChannelResult> {
+  const trimmed = urlOrId.trim();
+  if (!trimmed) {
+    return { success: false, message: 'Informe uma URL ou ID de canal.' };
+  }
+
+  if (!(await isYouTubeConfigured())) {
+    return {
+      success: false,
+      message:
+        'YouTube Data API key não configurada ou inválida. Vá em Configurações → YouTube Data API e cadastre + valide sua chave.',
+    };
+  }
+
+  const provider = await getProvider();
+  let fetched;
+  try {
+    fetched = await provider.lookupChannel(trimmed);
+  } catch (err) {
+    return {
+      success: false,
+      message: err instanceof Error ? err.message : 'Falha ao buscar canal.',
+    };
+  }
+
+  const prisma = getPrisma();
+
+  // Reactivate if previously soft-deleted.
+  const existing = await prisma.channel.findUnique({
+    where: { youtubeId: fetched.youtubeId },
+  });
+
+  const channel = existing
+    ? await prisma.channel.update({
+        where: { id: existing.id },
+        data: {
+          title: fetched.title,
+          thumbnailUrl: fetched.thumbnailUrl,
+          subscriberCount: fetched.subscriberCount,
+          videoCount: fetched.videoCount,
+          totalViewCount: fetched.totalViewCount,
+          monitored: true,
+          deletedAt: null,
+        },
+      })
+    : await prisma.channel.create({
+        data: {
+          youtubeId: fetched.youtubeId,
+          title: fetched.title,
+          thumbnailUrl: fetched.thumbnailUrl,
+          subscriberCount: fetched.subscriberCount,
+          videoCount: fetched.videoCount,
+          totalViewCount: fetched.totalViewCount,
+        },
+      });
+
+  // First snapshot — gives us a starting point for the analytics charts.
+  await prisma.channelSnapshot.create({
+    data: {
+      channelId: channel.id,
+      subscriberCount: fetched.subscriberCount,
+      totalViewCount: fetched.totalViewCount,
+      videoCount: fetched.videoCount,
+    },
+  });
+
+  if (categoryIds.length > 0) {
+    await setChannelCategories(channel.id, categoryIds);
+  }
+
+  // First sync: ingest the entire upload catalog so the evergreen detector
+  // has full history to work with. Cheap path via uploads playlist (1 unit
+  // per 50 videos). Failure here doesn't block the channel from being
+  // registered — user can re-trigger via "Atualizar agora".
+  let firstSyncCount = 0;
+  let firstSyncError: string | null = null;
+  try {
+    firstSyncCount = await ingestAllVideosForChannel(channel.id, channel.youtubeId, provider);
+    await prisma.channel.update({
+      where: { id: channel.id },
+      data: { lastUpdatedAt: new Date() },
+    });
+  } catch (err) {
+    firstSyncError = err instanceof Error ? err.message : String(err);
+  }
+
+  return {
+    success: true,
+    message:
+      (existing ? 'Canal reativado. ' : 'Canal cadastrado. ') +
+      (firstSyncError
+        ? `Sync inicial falhou (${firstSyncError}). Use "Atualizar agora" pra tentar de novo.`
+        : `${firstSyncCount} vídeo${firstSyncCount === 1 ? '' : 's'} sincronizado${firstSyncCount === 1 ? '' : 's'}.`),
+    channel: await projectChannel(channel.id),
+  };
+}
+
+/**
+ * Fetch every video from a channel's uploads playlist and persist them with
+ * an initial snapshot each. Used at channel-add time and as a recovery path.
+ */
+async function ingestAllVideosForChannel(
+  channelDbId: string,
+  channelYoutubeId: string,
+  provider: ChannelProvider
+): Promise<number> {
+  const fetched = await provider.listAllVideos(channelYoutubeId);
+  if (fetched.length === 0) return 0;
+  const prisma = getPrisma();
+
+  for (const v of fetched) {
+    const existing = await prisma.video.findUnique({
+      where: { youtubeId: v.youtubeId },
+    });
+    let videoRecordId: string;
+    if (existing) {
+      await prisma.video.update({
+        where: { id: existing.id },
+        data: {
+          channelId: channelDbId,
+          title: v.title,
+          thumbnailUrl: v.thumbnailUrl,
+          viewCount: v.viewCount,
+          likeCount: v.likeCount,
+          commentCount: v.commentCount,
+          durationSec: v.durationSec,
+          publishedAt: new Date(v.publishedAt),
+          deletedAt: null,
+        },
+      });
+      videoRecordId = existing.id;
+    } else {
+      const created = await prisma.video.create({
+        data: {
+          youtubeId: v.youtubeId,
+          channelId: channelDbId,
+          title: v.title,
+          thumbnailUrl: v.thumbnailUrl,
+          viewCount: v.viewCount,
+          likeCount: v.likeCount,
+          commentCount: v.commentCount,
+          durationSec: v.durationSec,
+          publishedAt: new Date(v.publishedAt),
+        },
+      });
+      videoRecordId = created.id;
+    }
+
+    await prisma.videoSnapshot.create({
+      data: {
+        videoId: videoRecordId,
+        viewCount: v.viewCount,
+        likeCount: v.likeCount,
+        commentCount: v.commentCount,
+      },
+    });
+  }
+
+  return fetched.length;
+}
+
+export async function removeChannel(channelId: string): Promise<void> {
+  await getPrisma().channel.update({
+    where: { id: channelId },
+    data: { monitored: false, deletedAt: new Date() },
+  });
+}
+
+export async function removeChannels(channelIds: string[]): Promise<number> {
+  if (channelIds.length === 0) return 0;
+  const result = await getPrisma().channel.updateMany({
+    where: { id: { in: channelIds }, deletedAt: null },
+    data: { monitored: false, deletedAt: new Date() },
+  });
+  return result.count;
+}
+
+export async function removeAllChannelsAndVideos(): Promise<{
+  channels: number;
+  videos: number;
+}> {
+  const prisma = getPrisma();
+  const now = new Date();
+
+  // Soft delete every non-deleted video, then every non-deleted channel.
+  // updateMany makes this a single round-trip per table.
+  const videosResult = await prisma.video.updateMany({
+    where: { deletedAt: null },
+    data: { deletedAt: now },
+  });
+  const channelsResult = await prisma.channel.updateMany({
+    where: { deletedAt: null },
+    data: { deletedAt: now, monitored: false },
+  });
+
+  return {
+    channels: channelsResult.count,
+    videos: videosResult.count,
+  };
+}
+
+export async function listChannels(filters?: {
+  categoryIds?: string[];
+}): Promise<ChannelInfo[]> {
+  const channels = await getPrisma().channel.findMany({
+    where: {
+      deletedAt: null,
+      monitored: true,
+      ...(filters?.categoryIds && filters.categoryIds.length > 0
+        ? { categories: { some: { categoryId: { in: filters.categoryIds } } } }
+        : {}),
+    },
+    orderBy: { createdAt: 'asc' },
+  });
+  return Promise.all(channels.map((c) => projectChannel(c.id, c)));
+}
+
+async function projectChannel(
+  id: string,
+  preloaded?: Awaited<ReturnType<typeof getPrisma>['channel']['findUnique']>
+): Promise<ChannelInfo> {
+  const prisma = getPrisma();
+  const c =
+    preloaded ?? (await prisma.channel.findUniqueOrThrow({ where: { id } }));
+
+  const lookbackDays = await getLookbackDays();
+  const since = new Date(Date.now() - lookbackDays * 86_400_000);
+
+  const [videoCountTracked, flaggedCount, recentAgg, categoryRows] = await Promise.all([
+    prisma.video.count({ where: { channelId: id, deletedAt: null } }),
+    prisma.video.count({
+      where: { channelId: id, deletedAt: null, flaggedAsOutlier: true },
+    }),
+    prisma.video.aggregate({
+      where: {
+        channelId: id,
+        deletedAt: null,
+        publishedAt: { gte: since },
+      },
+      _avg: { viewCount: true },
+      _count: { _all: true },
+    }),
+    prisma.channelCategory.findMany({
+      where: { channelId: id, category: { deletedAt: null } },
+      include: { category: { select: { id: true, name: true, color: true } } },
+      orderBy: { category: { name: 'asc' } },
+    }),
+  ]);
+
+  const recentAverageViews =
+    recentAgg._avg.viewCount !== null && recentAgg._avg.viewCount !== undefined
+      ? Math.round(recentAgg._avg.viewCount)
+      : null;
+
+  return {
+    id: c.id,
+    youtubeId: c.youtubeId,
+    title: c.title,
+    thumbnailUrl: c.thumbnailUrl,
+    subscriberCount: c.subscriberCount,
+    videoCount: c.videoCount,
+    totalViewCount: c.totalViewCount,
+    monitored: c.monitored,
+    lastUpdatedAt: c.lastUpdatedAt?.toISOString() ?? null,
+    videoCountTracked,
+    flaggedCount,
+    recentAverageViews,
+    recentVideoCount: recentAgg._count._all,
+    lookbackDays,
+    categories: categoryRows.map((cc) => ({
+      id: cc.category.id,
+      name: cc.category.name,
+      color: cc.category.color,
+    })),
+  };
+}
+
+// =============================================================================
+// Settings (threshold + lookback)
+// =============================================================================
+
+export async function getOutlierThreshold(): Promise<number> {
+  const v = await getSetting(THRESHOLD_KEY);
+  const n = v ? Number(v) : NaN;
+  return Number.isFinite(n) && n > 0 ? n : DEFAULT_THRESHOLD_PERCENT;
+}
+
+export async function getLookbackDays(): Promise<number> {
+  const v = await getSetting(LOOKBACK_KEY);
+  const n = v ? Number(v) : NaN;
+  return Number.isFinite(n) && n > 0 ? n : DEFAULT_LOOKBACK_DAYS;
+}
+
+export async function setOutlierThreshold(percent: number): Promise<void> {
+  if (!Number.isFinite(percent) || percent < 100) {
+    throw new Error('Threshold deve ser ≥ 100%.');
+  }
+  await setSetting(THRESHOLD_KEY, String(percent));
+}
+
+export async function setLookbackDays(days: number): Promise<void> {
+  if (!Number.isFinite(days) || days < 1) {
+    throw new Error('Lookback deve ser ≥ 1 dia.');
+  }
+  await setSetting(LOOKBACK_KEY, String(days));
+}
+
+// =============================================================================
+// Update runs
+// =============================================================================
+
+export async function runUpdateAll(
+  triggeredBy: 'manual' | 'scheduled' | 'startup'
+): Promise<UpdateRunInfo> {
+  const prisma = getPrisma();
+
+  const channels = await prisma.channel.findMany({
+    where: { deletedAt: null, monitored: true },
+  });
+
+  const thresholdPercent = await getOutlierThreshold();
+
+  const run = await prisma.updateRun.create({
+    data: {
+      triggeredBy,
+      channelsTotal: channels.length,
+      status: 'running',
+    },
+  });
+
+  // Bail out early if no real YouTube key is configured — there's nothing
+  // useful we can do (mocks would just regenerate fake data over real channels).
+  if (channels.length > 0 && !(await isYouTubeConfigured())) {
+    const updated = await prisma.updateRun.update({
+      where: { id: run.id },
+      data: {
+        completedAt: new Date(),
+        status: 'failed',
+        errorMessage:
+          'YouTube Data API key não configurada ou inválida. Configure em Configurações.',
+      },
+    });
+    return projectUpdateRun(updated);
+  }
+
+  const provider = await getProvider();
+
+  let success = 0;
+  let failed = 0;
+  let videosNew = 0;
+  let videosFlagged = 0;
+  let firstError: string | null = null;
+
+  for (const channel of channels) {
+    try {
+      // 1) Refresh channel-level stats (subs, total views) — 1 quota unit.
+      //    Failure here doesn't abort the video update; we still want videos
+      //    ingested even if the channel envelope failed transiently.
+      let channelSnapshotStats: {
+        subscriberCount: number | null;
+        totalViewCount: number | null;
+        videoCount: number | null;
+      } | null = null;
+      try {
+        const refreshed = await provider.lookupChannel(channel.youtubeId);
+        channelSnapshotStats = {
+          subscriberCount: refreshed.subscriberCount,
+          totalViewCount: refreshed.totalViewCount,
+          videoCount: refreshed.videoCount,
+        };
+        await prisma.channel.update({
+          where: { id: channel.id },
+          data: {
+            subscriberCount: refreshed.subscriberCount,
+            totalViewCount: refreshed.totalViewCount,
+            videoCount: refreshed.videoCount,
+            thumbnailUrl: refreshed.thumbnailUrl,
+            title: refreshed.title,
+          },
+        });
+      } catch {
+        /* keep going — re-snapshot of stored videos is the important part */
+      }
+
+      // 2) Discover NEW videos since last update. Bootstrapped channels get
+      //    `lastUpdatedAt` from the first sync; never-synced channels fall
+      //    back to a 90-day window so we don't pull the entire backlog twice.
+      const since = channel.lastUpdatedAt ?? new Date(Date.now() - 90 * 86_400_000);
+      let newVideos: Awaited<ReturnType<typeof provider.listAllVideos>> = [];
+      try {
+        newVideos = await provider.listAllVideos(channel.youtubeId, { since });
+      } catch {
+        /* tolerate — re-snapshot path below still runs */
+      }
+
+      for (const v of newVideos) {
+        const existing = await prisma.video.findUnique({
+          where: { youtubeId: v.youtubeId },
+        });
+        if (existing) {
+          await prisma.video.update({
+            where: { id: existing.id },
+            data: {
+              title: v.title,
+              thumbnailUrl: v.thumbnailUrl,
+              viewCount: v.viewCount,
+              likeCount: v.likeCount,
+              commentCount: v.commentCount,
+              durationSec: v.durationSec,
+              publishedAt: new Date(v.publishedAt),
+              deletedAt: null,
+            },
+          });
+        } else {
+          await prisma.video.create({
+            data: {
+              youtubeId: v.youtubeId,
+              channelId: channel.id,
+              title: v.title,
+              thumbnailUrl: v.thumbnailUrl,
+              viewCount: v.viewCount,
+              likeCount: v.likeCount,
+              commentCount: v.commentCount,
+              durationSec: v.durationSec,
+              publishedAt: new Date(v.publishedAt),
+            },
+          });
+          videosNew += 1;
+        }
+      }
+
+      // 3) Re-snapshot ALL stored videos for this channel (cheap: ~1 unit per
+      //    50 videos). This is what the evergreen detector reads — we need a
+      //    fresh data point per update for every video, not just new ones.
+      const storedVideos = await prisma.video.findMany({
+        where: { channelId: channel.id, deletedAt: null },
+        select: { id: true, youtubeId: true },
+      });
+
+      if (storedVideos.length > 0) {
+        const idMap = new Map(storedVideos.map((v) => [v.youtubeId, v.id]));
+        const stats = await provider.refreshVideoStats(
+          storedVideos.map((v) => v.youtubeId)
+        );
+
+        for (const s of stats) {
+          const dbId = idMap.get(s.youtubeId);
+          if (!dbId) continue;
+          await prisma.video.update({
+            where: { id: dbId },
+            data: {
+              viewCount: s.viewCount,
+              likeCount: s.likeCount,
+              commentCount: s.commentCount,
+            },
+          });
+          await prisma.videoSnapshot.create({
+            data: {
+              videoId: dbId,
+              viewCount: s.viewCount,
+              likeCount: s.likeCount,
+              commentCount: s.commentCount,
+            },
+          });
+        }
+      }
+
+      // 4) Channel snapshot.
+      if (channelSnapshotStats) {
+        await prisma.channelSnapshot.create({
+          data: {
+            channelId: channel.id,
+            subscriberCount: channelSnapshotStats.subscriberCount,
+            totalViewCount: channelSnapshotStats.totalViewCount,
+            videoCount: channelSnapshotStats.videoCount,
+          },
+        });
+      }
+
+      // 5) Recompute outliers across the full stored catalog for this channel.
+      const channelVideos = await prisma.video.findMany({
+        where: { channelId: channel.id, deletedAt: null },
+        select: { id: true, viewCount: true },
+      });
+      const assessment = assessOutliers(
+        channelVideos.map((v) => ({ id: v.id, viewCount: v.viewCount })),
+        thresholdPercent
+      );
+      for (const f of assessment.flagged) {
+        await prisma.video.update({
+          where: { id: f.id },
+          data: {
+            channelAvgViewsAtCheck: f.channelAvgViewsAtCheck,
+            outlierPercent: f.outlierPercent,
+            flaggedAsOutlier: f.flaggedAsOutlier,
+          },
+        });
+        if (f.flaggedAsOutlier) videosFlagged += 1;
+      }
+
+      await prisma.channel.update({
+        where: { id: channel.id },
+        data: { lastUpdatedAt: new Date() },
+      });
+      success += 1;
+    } catch (err) {
+      failed += 1;
+      if (!firstError) {
+        firstError = err instanceof Error ? err.message : String(err);
+      }
+    }
+  }
+
+  const status: UpdateRunInfo['status'] =
+    failed === 0 && success > 0
+      ? 'success'
+      : success > 0
+        ? 'partial'
+        : channels.length === 0
+          ? 'success'
+          : 'failed';
+
+  const updated = await prisma.updateRun.update({
+    where: { id: run.id },
+    data: {
+      completedAt: new Date(),
+      status,
+      channelsSuccessful: success,
+      channelsFailed: failed,
+      videosNew,
+      videosFlagged,
+      errorMessage: firstError,
+    },
+  });
+
+  return projectUpdateRun(updated);
+}
+
+export async function listUpdateRuns(limit = 10): Promise<UpdateRunInfo[]> {
+  const runs = await getPrisma().updateRun.findMany({
+    where: { deletedAt: null },
+    orderBy: { startedAt: 'desc' },
+    take: limit,
+  });
+  return runs.map(projectUpdateRun);
+}
+
+function projectUpdateRun(run: {
+  id: string;
+  triggeredBy: string;
+  startedAt: Date;
+  completedAt: Date | null;
+  status: string;
+  channelsTotal: number;
+  channelsSuccessful: number;
+  channelsFailed: number;
+  videosNew: number;
+  videosFlagged: number;
+  errorMessage: string | null;
+}): UpdateRunInfo {
+  return {
+    id: run.id,
+    triggeredBy: run.triggeredBy as UpdateRunInfo['triggeredBy'],
+    startedAt: run.startedAt.toISOString(),
+    completedAt: run.completedAt?.toISOString() ?? null,
+    status: run.status as UpdateRunInfo['status'],
+    channelsTotal: run.channelsTotal,
+    channelsSuccessful: run.channelsSuccessful,
+    channelsFailed: run.channelsFailed,
+    videosNew: run.videosNew,
+    videosFlagged: run.videosFlagged,
+    errorMessage: run.errorMessage,
+  };
+}
+
+// =============================================================================
+// Video queries
+// =============================================================================
+
+export async function getFlaggedVideos(
+  filters: FlaggedVideosFilters = {}
+): Promise<VideoInfo[]> {
+  const prisma = getPrisma();
+
+  const where: Parameters<typeof prisma.video.findMany>[0] = {
+    where: {
+      deletedAt: null,
+      flaggedAsOutlier: true,
+      ...(filters.channelId ? { channelId: filters.channelId } : {}),
+      ...(filters.sinceDays
+        ? {
+            publishedAt: {
+              gte: new Date(Date.now() - filters.sinceDays * 86_400_000),
+            },
+          }
+        : {}),
+      ...(filters.minPercent
+        ? { outlierPercent: { gte: filters.minPercent } }
+        : {}),
+      ...(filters.categoryIds && filters.categoryIds.length > 0
+        ? {
+            channel: {
+              categories: { some: { categoryId: { in: filters.categoryIds } } },
+            },
+          }
+        : {}),
+      ...durationFilter(filters.videoType),
+    },
+    orderBy: { outlierPercent: 'desc' },
+    take: 100,
+    include: { channel: { select: { title: true } } },
+  };
+
+  const videos = await prisma.video.findMany(where);
+  return videos.map(projectVideo);
+}
+
+/**
+ * YouTube Shorts are videos up to 3 minutes (180s) — current definition
+ * since late 2024. Anything longer is treated as a "long-form" video.
+ * Returns a Prisma where clause fragment, or an empty object for 'all'.
+ */
+const SHORTS_MAX_DURATION_SEC = 180;
+
+function durationFilter(videoType: VideoType | undefined) {
+  if (videoType === 'shorts') {
+    return { durationSec: { lte: SHORTS_MAX_DURATION_SEC, gt: 0 } };
+  }
+  if (videoType === 'long') {
+    return { durationSec: { gt: SHORTS_MAX_DURATION_SEC } };
+  }
+  return {};
+}
+
+export async function getChannelVideos(channelId: string): Promise<VideoInfo[]> {
+  const videos = await getPrisma().video.findMany({
+    where: { deletedAt: null, channelId },
+    orderBy: { publishedAt: 'desc' },
+    include: { channel: { select: { title: true } } },
+  });
+  return videos.map(projectVideo);
+}
+
+function projectVideo(v: {
+  id: string;
+  youtubeId: string;
+  channelId: string;
+  channel?: { title: string } | null;
+  title: string;
+  thumbnailUrl: string | null;
+  viewCount: number;
+  likeCount: number | null;
+  commentCount: number | null;
+  durationSec: number | null;
+  publishedAt: Date;
+  channelAvgViewsAtCheck: number | null;
+  outlierPercent: number | null;
+  flaggedAsOutlier: boolean;
+}): VideoInfo {
+  return {
+    id: v.id,
+    youtubeId: v.youtubeId,
+    channelId: v.channelId,
+    channelTitle: v.channel?.title,
+    title: v.title,
+    thumbnailUrl: v.thumbnailUrl,
+    viewCount: v.viewCount,
+    likeCount: v.likeCount,
+    commentCount: v.commentCount,
+    durationSec: v.durationSec,
+    publishedAt: v.publishedAt.toISOString(),
+    channelAvgViewsAtCheck: v.channelAvgViewsAtCheck,
+    outlierPercent: v.outlierPercent,
+    flaggedAsOutlier: v.flaggedAsOutlier,
+  };
+}
+
+// =============================================================================
+// Startup action (drives the popup-on-open in the renderer)
+// =============================================================================
+
+export async function getStartupAction(): Promise<StartupAction> {
+  const prisma = getPrisma();
+
+  // 1) Missed schedule: active, not cancelled, not yet run, scheduledAt < now.
+  const missed = await prisma.scheduledUpdate.findFirst({
+    where: {
+      deletedAt: null,
+      active: true,
+      cancelled: false,
+      ranAt: null,
+      scheduledAt: { lte: new Date() },
+    },
+    orderBy: { scheduledAt: 'asc' },
+  });
+  if (missed) {
+    return {
+      kind: 'missed-schedule',
+      schedule: {
+        id: missed.id,
+        scheduledAt: missed.scheduledAt.toISOString(),
+        active: missed.active,
+        cancelled: missed.cancelled,
+        ranAt: missed.ranAt?.toISOString() ?? null,
+      },
+    };
+  }
+
+  // 2) Suggest update if there are channels and last update is stale.
+  const channelsCount = await prisma.channel.count({
+    where: { deletedAt: null, monitored: true },
+  });
+  if (channelsCount === 0) return { kind: 'none' };
+
+  const dismissedUntilStr = await getSetting(SUGGESTION_DISMISSED_KEY);
+  if (dismissedUntilStr) {
+    const dismissedUntil = new Date(dismissedUntilStr);
+    if (Number.isFinite(dismissedUntil.getTime()) && dismissedUntil > new Date()) {
+      return { kind: 'none' };
+    }
+  }
+
+  const lastRun = await prisma.updateRun.findFirst({
+    where: { deletedAt: null, status: { in: ['success', 'partial'] } },
+    orderBy: { completedAt: 'desc' },
+  });
+
+  if (!lastRun || !lastRun.completedAt) {
+    return { kind: 'suggest-update', lastRunAt: null, channelsCount };
+  }
+
+  const hoursSinceLast =
+    (Date.now() - lastRun.completedAt.getTime()) / (1000 * 60 * 60);
+  if (hoursSinceLast < DEFAULT_SUGGEST_AFTER_HOURS) {
+    return { kind: 'none' };
+  }
+
+  return {
+    kind: 'suggest-update',
+    lastRunAt: lastRun.completedAt.toISOString(),
+    channelsCount,
+  };
+}
+
+export async function dismissStartupSuggestion(): Promise<void> {
+  // Snooze for ~12 hours so the popup doesn't reappear next time the user
+  // opens the app the same day.
+  const until = new Date(Date.now() + 12 * 60 * 60 * 1000);
+  await setSetting(SUGGESTION_DISMISSED_KEY, until.toISOString());
+}

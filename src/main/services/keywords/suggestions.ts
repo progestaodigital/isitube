@@ -1,0 +1,258 @@
+import { getPrisma } from '../../db';
+import type {
+  KeywordSuggestion,
+  KeywordSuggestionsPayload,
+} from '@shared/types';
+
+// pt-BR + en stopwords. Conservative list — focus on words that appear in
+// almost every video title and would dominate the n-gram counts.
+const STOPWORDS = new Set([
+  // Portuguese
+  'a', 'o', 'e', 'é', 'de', 'do', 'da', 'dos', 'das', 'em', 'no', 'na', 'nos', 'nas',
+  'um', 'uma', 'uns', 'umas', 'para', 'pra', 'por', 'com', 'sem', 'que', 'qual',
+  'quais', 'quem', 'como', 'quando', 'onde', 'mais', 'menos', 'muito', 'pouco',
+  'todo', 'toda', 'todos', 'todas', 'este', 'esta', 'esse', 'essa', 'isso', 'aquilo',
+  'ele', 'ela', 'eles', 'elas', 'eu', 'tu', 'nós', 'vós', 'meu', 'minha', 'seu',
+  'sua', 'meus', 'minhas', 'seus', 'suas', 'não', 'sim', 'ou', 'mas', 'se', 'já',
+  'ainda', 'também', 'então', 'depois', 'antes', 'agora', 'foi', 'ser', 'ter', 'estar',
+  'fazer', 'fiz', 'faz', 'fez', 'vai', 'vão', 'vem', 'vêm', 'até', 'sobre', 'sob',
+  'contra', 'entre', 'durante', 'são', 'tem', 'têm', 'só', 'lá', 'aí', 'aqui', 'ali',
+  'ao', 'aos', 'à', 'às', 'pelo', 'pela', 'pelos', 'pelas', 'num', 'numa',
+  // English
+  'a', 'an', 'the', 'of', 'in', 'on', 'at', 'to', 'for', 'with', 'by', 'from', 'as',
+  'into', 'like', 'through', 'after', 'before', 'between', 'but', 'and', 'or', 'not',
+  'are', 'is', 'was', 'were', 'be', 'been', 'being', 'have', 'has', 'had', 'do',
+  'does', 'did', 'will', 'would', 'could', 'should', 'this', 'that', 'these', 'those',
+  'i', 'you', 'he', 'she', 'it', 'we', 'they', 'my', 'your', 'his', 'her', 'its',
+  'our', 'their', 'what', 'which', 'who', 'when', 'where', 'why', 'how', 'all', 'any',
+  'both', 'each', 'few', 'more', 'most', 'other', 'some', 'such', 'no', 'nor', 'only',
+  'own', 'same', 'so', 'than', 'too', 'very', 'can', 'just',
+  // Years (filter out "2024", "2025", "2026" since they appear in many titles)
+  '2020', '2021', '2022', '2023', '2024', '2025', '2026', '2027',
+]);
+
+const SHORTS_MAX_DURATION_SEC = 180;
+const DEFAULT_TOP_N = 30;
+const DEFAULT_EVERGREEN_LOOKBACK_DAYS = 30;
+const DEFAULT_EVERGREEN_MIN_AGE_DAYS = 30;
+
+type DbVideo = {
+  id: string;
+  title: string;
+  tags: string | null;
+  viewCount: number;
+  durationSec: number | null;
+  publishedAt: Date;
+  channelId: string;
+};
+
+export async function getKeywordSuggestions(): Promise<KeywordSuggestionsPayload> {
+  const prisma = getPrisma();
+
+  // 1. Outlier videos (flagged as outlier, any age)
+  const outlierVideos = await prisma.video.findMany({
+    where: { deletedAt: null, flaggedAsOutlier: true },
+    select: {
+      id: true,
+      title: true,
+      tags: true,
+      viewCount: true,
+      durationSec: true,
+      publishedAt: true,
+      channelId: true,
+    },
+    take: 500,
+  });
+
+  // 2. Evergreen videos: published >30d ago, with snapshots, viewsPerDay >= 1
+  const sinceWindow = new Date(Date.now() - DEFAULT_EVERGREEN_LOOKBACK_DAYS * 86_400_000);
+  const maxPublishedAt = new Date(Date.now() - DEFAULT_EVERGREEN_MIN_AGE_DAYS * 86_400_000);
+  const candidateEvergreen = await prisma.video.findMany({
+    where: {
+      deletedAt: null,
+      publishedAt: { lte: maxPublishedAt },
+    },
+    select: {
+      id: true,
+      title: true,
+      tags: true,
+      viewCount: true,
+      durationSec: true,
+      publishedAt: true,
+      channelId: true,
+      snapshots: {
+        where: { deletedAt: null, takenAt: { gte: sinceWindow } },
+        orderBy: { takenAt: 'asc' },
+        select: { takenAt: true, viewCount: true },
+      },
+    },
+    take: 1000,
+  });
+
+  const evergreenVideos: DbVideo[] = [];
+  const now = Date.now();
+  for (const v of candidateEvergreen) {
+    let viewsPerDay = 0;
+    if (v.snapshots.length >= 2) {
+      const first = v.snapshots[0]!;
+      const last = v.snapshots[v.snapshots.length - 1]!;
+      const elapsedDays =
+        (last.takenAt.getTime() - first.takenAt.getTime()) / 86_400_000;
+      if (elapsedDays > 0) {
+        viewsPerDay = (last.viewCount - first.viewCount) / elapsedDays;
+      }
+    } else {
+      const ageDays = (now - v.publishedAt.getTime()) / 86_400_000;
+      if (ageDays > 0) viewsPerDay = v.viewCount / ageDays;
+    }
+    if (viewsPerDay >= 1) {
+      evergreenVideos.push({
+        id: v.id,
+        title: v.title,
+        tags: v.tags,
+        viewCount: v.viewCount,
+        durationSec: v.durationSec,
+        publishedAt: v.publishedAt,
+        channelId: v.channelId,
+      });
+    }
+  }
+
+  return {
+    outliers: extractAndRank(outlierVideos),
+    evergreen: extractAndRank(evergreenVideos),
+  };
+}
+
+function extractAndRank(videos: DbVideo[]): KeywordSuggestion[] {
+  const map = new Map<
+    string,
+    {
+      term: string;
+      source: 'tag' | 'title';
+      occurrences: number;
+      videoIds: Set<string>;
+      totalViews: number;
+      shorts: number;
+      long: number;
+    }
+  >();
+
+  for (const v of videos) {
+    const isShort =
+      v.durationSec !== null && v.durationSec > 0 && v.durationSec <= SHORTS_MAX_DURATION_SEC;
+
+    // Tags first — they're curated by the creator, most reliable signal
+    let tags: string[] = [];
+    if (v.tags) {
+      try {
+        const parsed = JSON.parse(v.tags);
+        if (Array.isArray(parsed)) tags = parsed.filter((t) => typeof t === 'string');
+      } catch {
+        /* ignore bad JSON */
+      }
+    }
+    for (const tag of tags) {
+      const normalized = normalize(tag);
+      if (!isUsefulTerm(normalized)) continue;
+      addOccurrence(map, normalized, 'tag', v, isShort);
+    }
+
+    // N-grams from title (1-3 words)
+    const titleNgrams = extractNgrams(v.title, [1, 2, 3]);
+    for (const gram of titleNgrams) {
+      if (!isUsefulTerm(gram)) continue;
+      addOccurrence(map, gram, 'title', v, isShort);
+    }
+  }
+
+  // Convert to array and rank
+  const suggestions: KeywordSuggestion[] = Array.from(map.values()).map((s) => ({
+    term: s.term,
+    source: s.source,
+    occurrences: s.occurrences,
+    sampleVideoIds: Array.from(s.videoIds).slice(0, 5),
+    totalViews: s.totalViews,
+    shortsCount: s.shorts,
+    longCount: s.long,
+  }));
+
+  // Rank: occurrences first (more videos = stronger signal), totalViews as tiebreaker
+  suggestions.sort((a, b) => {
+    if (b.occurrences !== a.occurrences) return b.occurrences - a.occurrences;
+    return b.totalViews - a.totalViews;
+  });
+
+  // Filter out singletons unless they're very-high view (>10k)
+  return suggestions
+    .filter((s) => s.occurrences >= 2 || s.totalViews >= 10_000)
+    .slice(0, DEFAULT_TOP_N);
+}
+
+function addOccurrence(
+  map: Map<string, ReturnType<typeof newEntry>>,
+  term: string,
+  source: 'tag' | 'title',
+  video: DbVideo,
+  isShort: boolean
+) {
+  let entry = map.get(term);
+  if (!entry) {
+    entry = newEntry(term, source);
+    map.set(term, entry);
+  }
+  // If a term comes from both a tag AND a title, "tag" takes priority (stronger signal).
+  if (source === 'tag' && entry.source === 'title') entry.source = 'tag';
+  if (entry.videoIds.has(video.id)) return; // count each video only once per term
+  entry.videoIds.add(video.id);
+  entry.occurrences += 1;
+  entry.totalViews += video.viewCount;
+  if (isShort) entry.shorts += 1;
+  else entry.long += 1;
+}
+
+function newEntry(term: string, source: 'tag' | 'title') {
+  return {
+    term,
+    source,
+    occurrences: 0,
+    videoIds: new Set<string>(),
+    totalViews: 0,
+    shorts: 0,
+    long: 0,
+  };
+}
+
+function normalize(s: string): string {
+  return s
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '') // strip accents for matching, but keep original visible
+    .replace(/[^\p{L}\p{N}\s-]/gu, ' ') // remove punctuation
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function isUsefulTerm(term: string): boolean {
+  if (!term || term.length < 3) return false;
+  if (term.length > 60) return false;
+  if (/^\d+$/.test(term)) return false; // pure numbers
+  // Reject if every word is a stopword
+  const words = term.split(/\s+/);
+  const allStop = words.every((w) => STOPWORDS.has(w));
+  return !allStop;
+}
+
+function extractNgrams(text: string, sizes: number[]): string[] {
+  const tokens = normalize(text)
+    .split(/\s+/)
+    .filter((t) => t.length > 1 && !STOPWORDS.has(t));
+  const out: string[] = [];
+  for (const n of sizes) {
+    for (let i = 0; i <= tokens.length - n; i++) {
+      const gram = tokens.slice(i, i + n).join(' ');
+      out.push(gram);
+    }
+  }
+  return out;
+}

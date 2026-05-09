@@ -1,0 +1,272 @@
+// isiTube database schema
+//
+// All tables are sync-ready: UUID primary keys, created_at/updated_at,
+// nullable synced_at + deleted_at for soft delete and future sync layer (v2+).
+
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "windows"]
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// Generic key/value settings (theme, language, schedule preferences, etc).
+model Setting {
+  id        String    @id @default(uuid())
+  key       String    @unique
+  value     String
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  syncedAt  DateTime? @map("synced_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  @@map("settings")
+}
+
+// Encrypted API credentials. Encrypted value never leaves main process.
+model ApiCredential {
+  id              String    @id @default(uuid())
+  provider        String    @unique
+  encryptedValue  Bytes?    @map("encrypted_value")
+  status          String    @default("missing")
+  lastValidatedAt DateTime? @map("last_validated_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+  syncedAt        DateTime? @map("synced_at")
+  deletedAt       DateTime? @map("deleted_at")
+
+  @@map("api_credentials")
+}
+
+// Audit/sync log: every mutation appends a row here.
+model ChangeLog {
+  id        String   @id @default(uuid())
+  entity    String
+  entityId  String   @map("entity_id")
+  operation String
+  payload   String?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([entity, createdAt])
+  @@map("change_log")
+}
+
+// Keyword research (Module 5)
+model Keyword {
+  id             String          @id @default(uuid())
+  term           String          @unique
+  lastSearchedAt DateTime?       @map("last_searched_at")
+  searchCount    Int             @default(0) @map("search_count")
+  searches       KeywordSearch[]
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  syncedAt  DateTime? @map("synced_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  @@map("keywords")
+}
+
+model KeywordSearch {
+  id         String  @id @default(uuid())
+  keywordId  String  @map("keyword_id")
+  keyword    Keyword @relation(fields: [keywordId], references: [id], onDelete: Cascade)
+  result     String
+  scoreValue Float?  @map("score_value")
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  syncedAt  DateTime? @map("synced_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  @@index([keywordId, createdAt])
+  @@map("keyword_searches")
+}
+
+// Channel monitoring (Module 1)
+
+model Channel {
+  id              String    @id @default(uuid())
+  youtubeId       String    @unique @map("youtube_id")
+  title           String
+  thumbnailUrl    String?   @map("thumbnail_url")
+  subscriberCount Int?      @map("subscriber_count")
+  videoCount      Int?      @map("video_count")
+  totalViewCount  Int?      @map("total_view_count")
+  monitored       Boolean   @default(true)
+  lastUpdatedAt   DateTime? @map("last_updated_at")
+
+  videos     Video[]
+  snapshots  ChannelSnapshot[]
+  categories ChannelCategory[]
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  syncedAt  DateTime? @map("synced_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  @@map("channels")
+}
+
+// User-defined categories ("nicho") for grouping channels. Many-to-many
+// with channels via ChannelCategory.
+model Category {
+  id    String  @id @default(uuid())
+  name  String  @unique
+  color String? // hex (#RRGGBB), optional — UI picks a default if null
+
+  channels ChannelCategory[]
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  syncedAt  DateTime? @map("synced_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  @@map("categories")
+}
+
+model ChannelCategory {
+  channelId  String   @map("channel_id")
+  categoryId String   @map("category_id")
+  channel    Channel  @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  category   Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@id([channelId, categoryId])
+  @@index([categoryId])
+  @@map("channel_categories")
+}
+
+// One row per "Atualizar agora" execution per channel — gives us the
+// historical series we need for the analytics charts (subscriber growth,
+// total views growth, video count over time).
+model ChannelSnapshot {
+  id              String   @id @default(uuid())
+  channelId       String   @map("channel_id")
+  channel         Channel  @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  takenAt         DateTime @default(now()) @map("taken_at")
+  subscriberCount Int?     @map("subscriber_count")
+  totalViewCount  Int?     @map("total_view_count")
+  videoCount      Int?     @map("video_count")
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  syncedAt  DateTime? @map("synced_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  @@index([channelId, takenAt])
+  @@map("channel_snapshots")
+}
+
+model Video {
+  id           String   @id @default(uuid())
+  youtubeId    String   @unique @map("youtube_id")
+  channelId    String   @map("channel_id")
+  channel      Channel  @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  title        String
+  thumbnailUrl String?  @map("thumbnail_url")
+  viewCount    Int      @default(0) @map("view_count")
+  likeCount    Int?     @map("like_count")
+  commentCount Int?     @map("comment_count")
+  durationSec  Int?     @map("duration_sec")
+  publishedAt  DateTime @map("published_at")
+
+  // Outlier detection — recomputed on every update run.
+  channelAvgViewsAtCheck Int?    @map("channel_avg_views_at_check")
+  outlierPercent         Float?  @map("outlier_percent")
+  flaggedAsOutlier       Boolean @default(false) @map("flagged_as_outlier")
+
+  // Module 2 — extracted on demand via "Extrair informações"
+  description         String?
+  tags                String?   // JSON-encoded string array
+  thumbnailHdUrl      String?   @map("thumbnail_hd_url")
+  language            String?
+  category            String?
+  liveBroadcastStatus String?   @map("live_broadcast_status")
+  metadataExtractedAt DateTime? @map("metadata_extracted_at")
+
+  // Module 3 — extracted on demand via "Extrair transcrição"
+  transcriptSegments    String?   @map("transcript_segments") // JSON [{ start: number, text: string }]
+  transcriptStatus      String?   @map("transcript_status") // 'available' | 'unavailable'
+  transcriptLanguage    String?   @map("transcript_language")
+  transcriptExtractedAt DateTime? @map("transcript_extracted_at")
+
+  snapshots VideoSnapshot[]
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  syncedAt  DateTime? @map("synced_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  @@index([channelId, publishedAt])
+  @@index([flaggedAsOutlier, publishedAt])
+  @@index([metadataExtractedAt])
+  @@map("videos")
+}
+
+// One row per "Atualizar agora" execution per video — gives us the
+// historical view-count series for each video, used for the evergreen
+// detector (videos that keep gaining views over time) and per-video
+// growth charts in v2+.
+model VideoSnapshot {
+  id           String   @id @default(uuid())
+  videoId      String   @map("video_id")
+  video        Video    @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  takenAt      DateTime @default(now()) @map("taken_at")
+  viewCount    Int      @map("view_count")
+  likeCount    Int?     @map("like_count")
+  commentCount Int?     @map("comment_count")
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  syncedAt  DateTime? @map("synced_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  @@index([videoId, takenAt])
+  @@map("video_snapshots")
+}
+
+// One row per "update all channels" execution.
+model UpdateRun {
+  id                 String    @id @default(uuid())
+  triggeredBy        String    @map("triggered_by") // 'manual' | 'scheduled' | 'startup'
+  startedAt          DateTime  @default(now()) @map("started_at")
+  completedAt        DateTime? @map("completed_at")
+  status             String    @default("running") // 'running' | 'success' | 'partial' | 'failed'
+  channelsTotal      Int       @default(0) @map("channels_total")
+  channelsSuccessful Int       @default(0) @map("channels_successful")
+  channelsFailed     Int       @default(0) @map("channels_failed")
+  videosNew          Int       @default(0) @map("videos_new")
+  videosFlagged      Int       @default(0) @map("videos_flagged")
+  errorMessage       String?   @map("error_message")
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  syncedAt  DateTime? @map("synced_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  @@index([startedAt])
+  @@map("update_runs")
+}
+
+// Active scheduled update. Only one is "active" at a time — setting a new
+// schedule cancels the previous.
+model ScheduledUpdate {
+  id          String    @id @default(uuid())
+  scheduledAt DateTime  @map("scheduled_at")
+  active      Boolean   @default(true)
+  cancelled   Boolean   @default(false)
+  ranAt       DateTime? @map("ran_at")
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  syncedAt  DateTime? @map("synced_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  @@index([active, scheduledAt])
+  @@map("scheduled_updates")
+}
