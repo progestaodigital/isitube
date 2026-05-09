@@ -309,6 +309,47 @@ export type ToastPayload = {
 };
 
 // =============================================================================
+// Evergreen detector
+// =============================================================================
+
+export type EvergreenVideo = {
+  id: string;
+  youtubeId: string;
+  title: string;
+  thumbnailUrl: string | null;
+  channelId: string;
+  channelTitle: string;
+  publishedAt: string;
+  totalViewCount: number;
+  /** Views/day in the most recent measured interval (last update). */
+  viewsPerDay: number;
+  /** How many of the most recent intervals had >100% of the channel average. */
+  consecutiveAboveAverage: number;
+  /** Last few interval percentages (chronological, oldest→newest). */
+  recentPercentages: number[];
+  /** Legacy: kept so existing UI doesn't break. Always 'window' in new algo. */
+  basedOn: 'window' | 'all-time';
+  snapshotCount: number;
+};
+
+export type EvergreenFilters = {
+  channelId?: string;
+  categoryIds?: string[];
+  minAgeDays?: number;
+  /** Min number of consecutive recent intervals > channel average. Default 3. */
+  minConsecutiveAboveAverage?: number;
+  /** Optional absolute floor on most-recent views/day to filter noise. */
+  minViewsPerDay?: number;
+  videoType?: VideoType;
+  sort?: 'viewsPerDay' | 'totalViews' | 'newest' | 'oldest';
+  titleQuery?: string;
+  /** Legacy field — no longer affects the new algorithm. */
+  lookbackDays?: number;
+};
+
+export type VideoType = 'all' | 'shorts' | 'long';
+
+// =============================================================================
 // Categories
 // =============================================================================
 

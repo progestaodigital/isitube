@@ -213,13 +213,19 @@ model Video {
 // detector (videos that keep gaining views over time) and per-video
 // growth charts in v2+.
 model VideoSnapshot {
-  id           String   @id @default(uuid())
-  videoId      String   @map("video_id")
-  video        Video    @relation(fields: [videoId], references: [id], onDelete: Cascade)
-  takenAt      DateTime @default(now()) @map("taken_at")
-  viewCount    Int      @map("view_count")
-  likeCount    Int?     @map("like_count")
-  commentCount Int?     @map("comment_count")
+  id           String     @id @default(uuid())
+  videoId      String     @map("video_id")
+  video        Video      @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  // Snapshots created by an "Atualizar agora" carry the run id so the evergreen
+  // detector can group snapshots taken in the same update and compute per-update
+  // channel averages. Backfill snapshots leave this null (they're a baseline
+  // marker, not an interval boundary).
+  updateRunId  String?    @map("update_run_id")
+  updateRun    UpdateRun? @relation(fields: [updateRunId], references: [id], onDelete: SetNull)
+  takenAt      DateTime   @default(now()) @map("taken_at")
+  viewCount    Int        @map("view_count")
+  likeCount    Int?       @map("like_count")
+  commentCount Int?       @map("comment_count")
 
   createdAt DateTime  @default(now()) @map("created_at")
   updatedAt DateTime  @updatedAt @map("updated_at")
@@ -227,6 +233,7 @@ model VideoSnapshot {
   deletedAt DateTime? @map("deleted_at")
 
   @@index([videoId, takenAt])
+  @@index([updateRunId])
   @@map("video_snapshots")
 }
 
@@ -243,6 +250,8 @@ model UpdateRun {
   videosNew          Int       @default(0) @map("videos_new")
   videosFlagged      Int       @default(0) @map("videos_flagged")
   errorMessage       String?   @map("error_message")
+
+  videoSnapshots VideoSnapshot[]
 
   createdAt DateTime  @default(now()) @map("created_at")
   updatedAt DateTime  @updatedAt @map("updated_at")

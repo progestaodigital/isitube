@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Sprout, TrendingUp, Calendar, Eye, Search, Trash2 } from 'lucide-react';
+import { Sprout, TrendingUp, Calendar, Eye, Search, Trash2, Info } from 'lucide-react';
 import { Card } from '../../components/ui/Card';
 import { Input } from '../../components/ui/Input';
 import { SkeletonListRow } from '../../components/ui/Skeleton';
@@ -7,6 +7,8 @@ import { useVideoDetailStore } from '../../stores/videoDetail';
 import { useToastStore } from '../../stores/toast';
 import { cn } from '../../lib/cn';
 import type { ChannelInfo, EvergreenFilters, EvergreenVideo } from '@shared/types';
+
+type Readiness = { totalUpdateRuns: number; intervalsAvailable: number; minNeeded: number };
 
 interface EvergreenTabProps {
   channels: ChannelInfo[];
@@ -19,10 +21,11 @@ export function EvergreenTab({ channels, categoryIds = [] }: EvergreenTabProps) 
 
   const [items, setItems] = useState<EvergreenVideo[]>([]);
   const [confirmingDelete, setConfirmingDelete] = useState<string | null>(null);
+  const [readiness, setReadiness] = useState<Readiness | null>(null);
   const [filters, setFilters] = useState<EvergreenFilters>({
     minAgeDays: 30,
-    lookbackDays: 30,
-    minViewsPerDay: 10,
+    minConsecutiveAboveAverage: 3,
+    minViewsPerDay: 0,
     videoType: 'all',
     sort: 'viewsPerDay',
   });
@@ -46,12 +49,15 @@ export function EvergreenTab({ channels, categoryIds = [] }: EvergreenTabProps) 
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
-      setItems(
-        await window.api.channels.analyticsEvergreen({
+      const [list, ready] = await Promise.all([
+        window.api.channels.analyticsEvergreen({
           ...filters,
           categoryIds: categoryIds.length > 0 ? categoryIds : undefined,
-        })
-      );
+        }),
+        window.api.channels.analyticsEvergreenReadiness(),
+      ]);
+      setItems(list);
+      setReadiness(ready);
     } finally {
       setLoading(false);
     }
@@ -70,11 +76,15 @@ export function EvergreenTab({ channels, categoryIds = [] }: EvergreenTabProps) 
   return (
     <div className="space-y-4">
       <Card className="p-3">
-        <div className="flex flex-wrap items-center gap-3 text-sm">
-          <Sprout className="h-4 w-4 text-emerald-500" />
-          <p className="text-xs text-zinc-700 dark:text-zinc-300">
-            Vídeos antigos que continuam ganhando views — ranking pela média de views/dia recente.
-          </p>
+        <div className="flex flex-wrap items-start gap-3 text-sm">
+          <Sprout className="mt-0.5 h-4 w-4 shrink-0 text-emerald-500" />
+          <div className="flex-1 text-xs text-zinc-700 dark:text-zinc-300">
+            <p>
+              Vídeos antigos (&gt; 30d) que ficaram <b>acima da média do canal em N atualizações
+              consecutivas</b>. A cada "Atualizar agora" o sistema mede views/dia desde a última
+              checagem e compara com a média do canal naquela mesma janela.
+            </p>
+          </div>
         </div>
         <div className="mt-3 flex flex-wrap items-center gap-3 text-sm">
           <FilterField label="Canal">
@@ -101,38 +111,41 @@ export function EvergreenTab({ channels, categoryIds = [] }: EvergreenTabProps) 
               }
               className="h-8 rounded-md border border-zinc-300 bg-white px-2 text-xs dark:border-zinc-700 dark:bg-zinc-900"
             >
-              <option value="14">≥ 14 dias</option>
               <option value="30">≥ 30 dias</option>
               <option value="90">≥ 90 dias</option>
+              <option value="180">≥ 180 dias</option>
               <option value="365">≥ 1 ano</option>
             </select>
           </FilterField>
-          <FilterField label="Janela">
+          <FilterField label="Atualizações consecutivas">
             <select
-              value={filters.lookbackDays ?? 30}
+              value={filters.minConsecutiveAboveAverage ?? 3}
               onChange={(e) =>
-                setFilters((f) => ({ ...f, lookbackDays: Number(e.target.value) }))
+                setFilters((f) => ({
+                  ...f,
+                  minConsecutiveAboveAverage: Number(e.target.value),
+                }))
               }
               className="h-8 rounded-md border border-zinc-300 bg-white px-2 text-xs dark:border-zinc-700 dark:bg-zinc-900"
             >
-              <option value="7">Últimos 7 dias</option>
-              <option value="30">Últimos 30 dias</option>
-              <option value="90">Últimos 90 dias</option>
+              <option value="2">≥ 2 (mais permissivo)</option>
+              <option value="3">≥ 3 (recomendado)</option>
+              <option value="4">≥ 4</option>
+              <option value="5">≥ 5 (conservador)</option>
             </select>
           </FilterField>
           <FilterField label="Views/dia mínimo">
             <select
-              value={filters.minViewsPerDay ?? 10}
+              value={filters.minViewsPerDay ?? 0}
               onChange={(e) =>
                 setFilters((f) => ({ ...f, minViewsPerDay: Number(e.target.value) }))
               }
               className="h-8 rounded-md border border-zinc-300 bg-white px-2 text-xs dark:border-zinc-700 dark:bg-zinc-900"
             >
+              <option value="0">Sem mínimo</option>
               <option value="1">≥ 1/dia</option>
               <option value="10">≥ 10/dia</option>
-              <option value="50">≥ 50/dia</option>
               <option value="100">≥ 100/dia</option>
-              <option value="500">≥ 500/dia</option>
             </select>
           </FilterField>
           <FilterField label="Tipo">
@@ -162,7 +175,7 @@ export function EvergreenTab({ channels, categoryIds = [] }: EvergreenTabProps) 
               }
               className="h-8 rounded-md border border-zinc-300 bg-white px-2 text-xs dark:border-zinc-700 dark:bg-zinc-900"
             >
-              <option value="viewsPerDay">Views/dia (maior)</option>
+              <option value="viewsPerDay">Streak + % recente</option>
               <option value="totalViews">Views totais (maior)</option>
               <option value="newest">Mais recentes</option>
               <option value="oldest">Mais antigos</option>
@@ -182,6 +195,28 @@ export function EvergreenTab({ channels, categoryIds = [] }: EvergreenTabProps) 
         </div>
       </Card>
 
+      {readiness &&
+        readiness.totalUpdateRuns < (filters.minConsecutiveAboveAverage ?? 3) && (
+          <Card className="border-amber-200 bg-amber-50 p-3 dark:border-amber-900 dark:bg-amber-950/30">
+            <div className="flex items-start gap-2">
+              <Info className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
+              <div className="text-xs text-amber-900 dark:text-amber-200">
+                <p className="font-semibold">Coletando dados</p>
+                <p className="mt-0.5">
+                  Você fez {readiness.totalUpdateRuns} "Atualizar agora" até agora.
+                  Pra detectar evergreens com {filters.minConsecutiveAboveAverage ?? 3}{' '}
+                  intervalos consecutivos acima da média, faltam{' '}
+                  {Math.max(
+                    0,
+                    (filters.minConsecutiveAboveAverage ?? 3) - readiness.totalUpdateRuns
+                  )}{' '}
+                  atualização(ões). Espace as atualizações por alguns dias pra ter sinal real.
+                </p>
+              </div>
+            </div>
+          </Card>
+        )}
+
       {loading && items.length === 0 ? (
         <div className="space-y-2">
           {Array.from({ length: 5 }).map((_, i) => (
@@ -193,9 +228,9 @@ export function EvergreenTab({ channels, categoryIds = [] }: EvergreenTabProps) 
           <Sprout className="mx-auto h-10 w-10 text-zinc-300 dark:text-zinc-700" />
           <p className="mt-3 text-sm font-medium">Nenhum vídeo evergreen no momento</p>
           <p className="mt-1 text-xs text-zinc-500">
-            Pode ser falta de histórico (precisa de pelo menos 2 atualizações pra calcular
-            views/dia recente) ou os filtros estão muito apertados. Tenta diminuir o "views/dia
-            mínimo".
+            {readiness && readiness.totalUpdateRuns < (filters.minConsecutiveAboveAverage ?? 3)
+              ? 'Faltam atualizações pra termos sinal estatístico. Veja o aviso acima.'
+              : 'Nenhum vídeo > 30d ficou acima da média do canal nas últimas atualizações consecutivas. Tenta reduzir o filtro de "Atualizações consecutivas" ou aguarde mais updates.'}
           </p>
         </Card>
       ) : (
@@ -256,10 +291,42 @@ export function EvergreenTab({ channels, categoryIds = [] }: EvergreenTabProps) 
                   </div>
                 </button>
                 <div className="flex shrink-0 flex-col items-end justify-between gap-2">
-                  <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-semibold text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400">
-                    <TrendingUp className="h-3 w-3" />
-                    {formatCompact(v.viewsPerDay)}/dia
-                  </span>
+                  <div className="flex flex-col items-end gap-1">
+                    <span
+                      className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-semibold text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400"
+                      title={`${v.consecutiveAboveAverage} atualizações consecutivas acima da média do canal`}
+                    >
+                      <TrendingUp className="h-3 w-3" />
+                      {v.consecutiveAboveAverage}× acima
+                    </span>
+                    <span className="text-[11px] text-zinc-500">
+                      {formatCompact(v.viewsPerDay)}/dia recente
+                    </span>
+                    {v.recentPercentages.length > 0 && (
+                      <div
+                        className="flex items-end gap-0.5"
+                        title={`Histórico %: ${v.recentPercentages.join(', ')}`}
+                      >
+                        {v.recentPercentages.map((pct, i) => {
+                          // Bar height proportional to % up to ~300%; min 4px so 0% is visible.
+                          const heightPx = Math.max(4, Math.min(24, (pct / 200) * 24));
+                          const isAbove = pct > 100;
+                          return (
+                            <span
+                              key={i}
+                              className={cn(
+                                'w-1.5 rounded-sm',
+                                isAbove
+                                  ? 'bg-emerald-500'
+                                  : 'bg-zinc-300 dark:bg-zinc-700'
+                              )}
+                              style={{ height: `${heightPx}px` }}
+                            />
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
                   <button
                     onClick={handleDelete}
                     title={isConfirming ? 'Confirma — clique de novo' : 'Excluir do monitoramento'}

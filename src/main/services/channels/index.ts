@@ -583,6 +583,7 @@ export async function runUpdateAll(
               viewCount: s.viewCount,
               likeCount: s.likeCount,
               commentCount: s.commentCount,
+              updateRunId: run.id,
             },
           });
         }

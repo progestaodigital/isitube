@@ -124,6 +124,11 @@ const api: IsitubeAPI = {
       ),
     analyticsEvergreen: (filters?: EvergreenFilters): Promise<EvergreenVideo[]> =>
       ipcRenderer.invoke('channels:analytics-evergreen', filters),
+    analyticsEvergreenReadiness: (): Promise<{
+      totalUpdateRuns: number;
+      intervalsAvailable: number;
+      minNeeded: number;
+    }> => ipcRenderer.invoke('channels:analytics-evergreen-readiness'),
   },
 
   categories: {

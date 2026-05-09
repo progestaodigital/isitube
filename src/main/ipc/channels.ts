@@ -15,6 +15,7 @@ import {
 } from '../services/channels';
 import {
   getChannelsTimeSeries,
+  getEvergreenReadiness,
   getEvergreenVideos,
 } from '../services/channels/analytics';
 import { broadcastUpdateRunCompleted } from '../services/channels/scheduler';
@@ -164,6 +165,9 @@ export function registerChannelsHandlers(): void {
         f.sort = o.sort as EvergreenFilters['sort'];
       }
       if (typeof o.titleQuery === 'string') f.titleQuery = o.titleQuery;
+      if (typeof o.minConsecutiveAboveAverage === 'number') {
+        f.minConsecutiveAboveAverage = o.minConsecutiveAboveAverage;
+      }
       if (
         Array.isArray(o.categoryIds) &&
         o.categoryIds.every((id) => typeof id === 'string')
@@ -173,4 +177,8 @@ export function registerChannelsHandlers(): void {
     }
     return getEvergreenVideos(f);
   });
+
+  ipcMain.handle('channels:analytics-evergreen-readiness', async () =>
+    getEvergreenReadiness()
+  );
 }
