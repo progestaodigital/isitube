@@ -62,6 +62,8 @@ export type TopResult = {
   channelName: string;
   viewCount: number;
   publishedAt: string;
+  /** YouTube video id (11 chars). Null when unavailable (older mock data). */
+  videoId: string | null;
 };
 
 export type ScrapingData = {

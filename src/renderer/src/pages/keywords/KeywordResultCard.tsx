@@ -86,21 +86,46 @@ export function KeywordResultCard({ result, onRefresh, busy }: KeywordResultCard
           onToggle={() => setShowTop((s) => !s)}
         >
           <ol className="space-y-1 text-sm">
-            {result.scraping.data.topResults.map((r) => (
-              <li
-                key={r.position}
-                className="flex items-baseline gap-3 rounded-md px-2 py-1 hover:bg-zinc-50 dark:hover:bg-zinc-800/50"
-              >
-                <span className="w-5 text-right text-xs text-zinc-500">{r.position}</span>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate font-medium">{r.title}</p>
-                  <p className="text-xs text-zinc-500">
-                    {r.channelName} · {formatViews(r.viewCount)} visualizações ·{' '}
-                    {formatAge(r.publishedAt)}
-                  </p>
-                </div>
-              </li>
-            ))}
+            {result.scraping.data.topResults.map((r) => {
+              const href = r.videoId
+                ? `https://www.youtube.com/watch?v=${r.videoId}`
+                : null;
+              const content = (
+                <>
+                  <span className="w-5 shrink-0 text-right text-xs text-zinc-500">
+                    {r.position}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate font-medium group-hover:text-red-600 dark:group-hover:text-red-400">
+                      {r.title}
+                    </p>
+                    <p className="text-xs text-zinc-500">
+                      {r.channelName} · {formatViews(r.viewCount)} visualizações ·{' '}
+                      {formatAge(r.publishedAt)}
+                    </p>
+                  </div>
+                </>
+              );
+              return (
+                <li key={r.position}>
+                  {href ? (
+                    <a
+                      href={href}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="group flex items-baseline gap-3 rounded-md px-2 py-1 hover:bg-zinc-50 dark:hover:bg-zinc-800/50"
+                      title="Abrir no YouTube"
+                    >
+                      {content}
+                    </a>
+                  ) : (
+                    <div className="flex items-baseline gap-3 rounded-md px-2 py-1">
+                      {content}
+                    </div>
+                  )}
+                </li>
+              );
+            })}
           </ol>
         </CollapsibleSection>
       )}

@@ -36,6 +36,7 @@ export class ScrapingRealProvider implements KeywordSourceProvider<ScrapingData>
         typeof item.author?.name === 'string' ? item.author.name : '',
       viewCount: parseViewCount(item.views),
       publishedAt: parseUploadedAt(item.uploadedAt),
+      videoId: extractVideoId(item),
     }));
 
     const ages = topResults.map((r) => daysSince(r.publishedAt));
@@ -55,6 +56,19 @@ export class ScrapingRealProvider implements KeywordSourceProvider<ScrapingData>
       competitionScore,
     };
   }
+}
+
+function extractVideoId(item: any): string | null {
+  // ytsr exposes both `id` and `url`. Prefer the explicit id, fall back to
+  // parsing it out of the watch URL (handles ?v= and youtu.be/ shortlinks).
+  if (typeof item?.id === 'string' && /^[A-Za-z0-9_-]{11}$/.test(item.id)) {
+    return item.id;
+  }
+  if (typeof item?.url === 'string') {
+    const m = item.url.match(/(?:v=|youtu\.be\/)([A-Za-z0-9_-]{11})/);
+    if (m) return m[1];
+  }
+  return null;
 }
 
 function parseViewCount(value: unknown): number {

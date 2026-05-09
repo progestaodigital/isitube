@@ -55,6 +55,7 @@ export class ScrapingProvider implements KeywordSourceProvider<ScrapingData> {
         publishedAt: new Date(
           Date.now() - rangeInt(rand, 7, 540) * 86_400 * 1000
         ).toISOString(),
+        videoId: mockVideoId(term, i),
       };
     });
 
@@ -87,4 +88,19 @@ function clamp(n: number, min: number, max: number): number {
 
 function capitalize(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+function mockVideoId(term: string, index: number): string {
+  // Synthetic 11-char id, deterministic by (term, index). Won't open a real
+  // video on YouTube — clicks in dev mock will land on an empty page. Real
+  // scraping returns actual ids.
+  const seed = strHash(`${term}::${index}`);
+  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
+  let n = seed;
+  let out = '';
+  for (let i = 0; i < 11; i++) {
+    n = (n * 9301 + 49297 + i * 7) >>> 0;
+    out += alphabet[n % alphabet.length];
+  }
+  return out;
 }
