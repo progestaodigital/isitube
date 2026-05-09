@@ -124,7 +124,12 @@ export function FlaggedVideosList({
       ) : (
         <div className="space-y-2">
           {videos.map((v) => (
-            <VideoCard key={v.id} video={v} onDelete={onDeleteVideo} />
+            <VideoCard
+              key={v.id}
+              video={v}
+              onDelete={onDeleteVideo}
+              windowDays={filters.sinceDays ?? 30}
+            />
           ))}
         </div>
       )}

@@ -2,17 +2,17 @@ import { useState } from 'react';
 import { Eye, ThumbsUp, Calendar, Flame, ExternalLink, Trash2 } from 'lucide-react';
 import type { VideoInfo } from '@shared/types';
 import { useVideoDetailStore } from '../../stores/videoDetail';
-import { useLookbackDays } from '../../hooks/useLookbackDays';
 import { cn } from '../../lib/cn';
 
 interface VideoCardProps {
   video: VideoInfo;
   onDelete?: (videoId: string) => void;
+  /** Janela usada pelo filtro atual — vai pro label "média do canal nos últimos X dias". */
+  windowDays?: number;
 }
 
-export function VideoCard({ video, onDelete }: VideoCardProps) {
+export function VideoCard({ video, onDelete, windowDays = 30 }: VideoCardProps) {
   const open = useVideoDetailStore((s) => s.open);
-  const lookbackDays = useLookbackDays();
   const [confirming, setConfirming] = useState(false);
   const pct = video.outlierPercent ?? 0;
   const badgeClass =
@@ -94,7 +94,7 @@ export function VideoCard({ video, onDelete }: VideoCardProps) {
           <Stat icon={Calendar} text={formatRelativeDate(video.publishedAt)} />
           {video.channelAvgViewsAtCheck && video.channelAvgViewsAtCheck > 0 && (
             <span className="text-zinc-500">
-              média do canal nos últimos {lookbackDays} dias:{' '}
+              média do canal nos últimos {windowDays} dias:{' '}
               {formatCompact(video.channelAvgViewsAtCheck)}
             </span>
           )}
