@@ -4,7 +4,6 @@ import { YouTubeMockProvider } from './providers/youtube-mock';
 import { YouTubeRealProvider } from './providers/youtube-real';
 import type { ChannelProvider } from './providers/types';
 import { getCredentialPlainText, getCredentialStatus } from '../credentials';
-import { assessOutliers } from './outlier';
 import { setChannelCategories } from '../categories';
 import type {
   AddChannelResult,
@@ -686,21 +685,20 @@ export async function runUpdateAll(
         });
       }
 
-      // 5) Persistent outlier flag — used by 🔥 badges shown on video cards
-      //    across the app (Evergreen, channel detail, etc). Computed against
-      //    a fixed 30-day window for visual consistency. The "Vídeos em
-      //    destaque" tab does its own dynamic-window calculation per request,
-      //    so this flag is only the default-window snapshot.
-      const FLAG_WINDOW_DAYS = 30;
-      const sinceFlag = new Date(Date.now() - FLAG_WINDOW_DAYS * 86_400_000);
+      // 5) Persistent outlier flag — usado pelos badges 🔥 nos cards.
+      //    Mesmo algoritmo do getFlaggedVideos (views/dia + média de ativos
+      //    em janela fixa de 30d), pra que o badge bata com o que o usuário
+      //    vê na aba "Vídeos em destaque" no filtro default.
+      const sinceFlag = new Date(Date.now() - BASELINE_WINDOW_DAYS * 86_400_000);
 
-      // Reset flag on videos that fell out of the 30d window — they're no
-      // longer "destaque" candidates.
+      // Limpa o flag em todos os vídeos do canal — vai ser reaplicado abaixo
+      // só nos que de fato qualificam. Resolve dois casos:
+      //   - vídeos que saíram da janela de 30d
+      //   - vídeos que estavam flagged mas perderam tração e não qualificam mais
       await prisma.video.updateMany({
         where: {
           channelId: channel.id,
           deletedAt: null,
-          publishedAt: { lt: sinceFlag },
           flaggedAsOutlier: true,
         },
         data: { flaggedAsOutlier: false },
@@ -712,22 +710,40 @@ export async function runUpdateAll(
           deletedAt: null,
           publishedAt: { gte: sinceFlag },
         },
-        select: { id: true, viewCount: true },
-      });
-      const assessment = assessOutliers(
-        recentChannelVideos.map((v) => ({ id: v.id, viewCount: v.viewCount })),
-        thresholdPercent
-      );
-      for (const f of assessment.flagged) {
-        await prisma.video.update({
-          where: { id: f.id },
-          data: {
-            channelAvgViewsAtCheck: f.channelAvgViewsAtCheck,
-            outlierPercent: f.outlierPercent,
-            flaggedAsOutlier: f.flaggedAsOutlier,
+        include: {
+          snapshots: {
+            where: { deletedAt: null, takenAt: { gte: sinceFlag } },
+            orderBy: { takenAt: 'asc' },
+            select: { takenAt: true, viewCount: true },
           },
-        });
-        if (f.flaggedAsOutlier) videosFlagged += 1;
+        },
+      });
+
+      // Computa views/dia pra cada e separa os ativos.
+      const withVpd = recentChannelVideos.map((v) => ({ video: v, vpd: viewsPerDay(v) }));
+      const active = withVpd.filter((x) => x.vpd >= ACTIVE_FLOOR_VIEWS_PER_DAY);
+
+      if (active.length >= BASELINE_MIN_ACTIVE) {
+        const sumVpd = active.reduce((s, x) => s + x.vpd, 0);
+        const avgVpd = sumVpd / active.length;
+
+        if (avgVpd > 0) {
+          for (const { video: v, vpd } of withVpd) {
+            const pct = (vpd / avgVpd) * 100;
+            const isOutlier = pct >= thresholdPercent;
+            if (isOutlier) {
+              await prisma.video.update({
+                where: { id: v.id },
+                data: {
+                  channelAvgViewsAtCheck: Math.round(avgVpd),
+                  outlierPercent: pct,
+                  flaggedAsOutlier: true,
+                },
+              });
+              videosFlagged += 1;
+            }
+          }
+        }
       }
 
       await prisma.channel.update({
