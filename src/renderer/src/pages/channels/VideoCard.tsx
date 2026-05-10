@@ -99,14 +99,19 @@ export function VideoCard({
             <Stat icon={ThumbsUp} text={`${formatCompact(video.likeCount)}`} />
           )}
           <Stat icon={Calendar} text={formatRelativeDate(video.publishedAt)} />
+          {video.viewsPerDay !== undefined && video.viewsPerDay > 0 && (
+            <span className="text-zinc-500">
+              {formatCompact(video.viewsPerDay)} views/dia
+            </span>
+          )}
           {video.channelAvgViewsAtCheck && video.channelAvgViewsAtCheck > 0 && (
-            <span className="text-zinc-500" title={baselineHint(video, videoType, windowDays)}>
-              média {baselineNounLabel(video, videoType)} do canal nos últimos{' '}
-              {windowDays} dias: {formatCompact(video.channelAvgViewsAtCheck)}
+            <span className="text-zinc-500" title={baselineHint(video, videoType)}>
+              mediana {baselineNounLabel(video, videoType)} do canal (30d):{' '}
+              {formatCompact(video.channelAvgViewsAtCheck)}/dia
               {video.baselineCount !== undefined && (
                 <span className="ml-1 opacity-70">
                   ({video.baselineCount}{' '}
-                  {baselineUnitLabel(video, videoType, video.baselineCount)})
+                  {baselineUnitLabel(video, videoType, video.baselineCount)} ativos)
                 </span>
               )}
             </span>
@@ -150,13 +155,12 @@ function baselineUnitLabel(
 
 function baselineHint(
   video: VideoInfo,
-  type: 'all' | 'shorts' | 'long' | 'unknown',
-  windowDays: number
+  type: 'all' | 'shorts' | 'long' | 'unknown'
 ): string {
   if (video.baselineKind === 'mixed' && type !== 'all') {
-    return `O canal tem menos de 3 ${type === 'long' ? 'longos' : 'shorts'} nos últimos ${windowDays} dias — comparei com a média de TODOS os vídeos do canal no período em vez de tentar baseline com 1-2 amostras.`;
+    return `O canal tem menos de 3 ${type === 'long' ? 'longos' : 'shorts'} ativos nos últimos 30 dias — comparei com a mediana de TODOS os vídeos ativos do canal em vez de tentar baseline com 1-2 amostras.`;
   }
-  return '';
+  return 'Mediana de views/dia entre vídeos ativos (≥ 1 view/dia) do canal nos últimos 30 dias.';
 }
 
 function Stat({ icon: Icon, text }: { icon: typeof Eye; text: string }) {

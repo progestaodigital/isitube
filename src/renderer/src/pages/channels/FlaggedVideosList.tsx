@@ -109,10 +109,11 @@ export function FlaggedVideosList({
           </Button>
         </div>
         <p className="mt-2 text-[11px] text-zinc-500">
-          Comparado com a média de views do mesmo canal{' '}
-          <b>na mesma janela e do mesmo tipo</b> (shorts vs longs) quando o canal
-          tem ≥ 3 vídeos do tipo no período. Senão, fallback pra média mista do canal —
-          o card mostra qual baseline foi usada.
+          Cada vídeo é comparado pela velocidade <b>views/dia</b>. A baseline é a{' '}
+          <b>mediana de views/dia</b> dos vídeos ativos (≥ 1 view/dia) do canal nos{' '}
+          <b>últimos 30 dias</b> (sempre 30d, independente do filtro de período).
+          Mediana resiste a virais e zerados; views/dia neutraliza vídeos de idades
+          diferentes. O período só restringe quais vídeos aparecem na lista.
         </p>
       </Card>
 

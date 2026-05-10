@@ -185,6 +185,8 @@ export type VideoInfo = {
    */
   baselineKind?: 'type' | 'mixed';
   baselineCount?: number;
+  /** Recent views/day for this video (set by getFlaggedVideos). */
+  viewsPerDay?: number;
 };
 
 export type AddChannelResult = {

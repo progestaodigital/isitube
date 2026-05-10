@@ -736,18 +736,29 @@ function projectUpdateRun(run: {
 // =============================================================================
 
 /**
- * Outlier detection — DYNAMIC window edition.
+ * Outlier detection — VIEWS/DIA + MEDIAN baseline edition.
  *
- * The cutoff is computed *fresh per request* using the same window the user
- * selected (default 30d). Each channel's average is calculated only across
- * its videos published within that same window — videos outside the window
- * are neither comparators nor candidates. This way, "destaque dos últimos 7
- * dias" really means "vídeo dos últimos 7 dias acima da média dos vídeos do
- * canal nos últimos 7 dias" — not against the channel's lifetime average.
+ * Mental model: "destaque" = vídeo cuja velocidade de views/dia ultrapassa
+ * por X% a velocidade típica do canal nos últimos 30 dias.
  *
- * Per-channel scoping ensures small channels can have outliers (the average
- * adapts to that channel's typical performance).
+ * Why views/dia (not total views): vídeos de idades diferentes têm acumulações
+ * incomparáveis. 30k em 3 dias e 30k em 100 dias performam radicalmente
+ * diferente. Normalizar por idade neutraliza isso.
+ *
+ * Why median (not mean): canais têm muitos vídeos com tração próxima de zero
+ * (long tail) E ocasionais virais. Média sofre dos dois lados; mediana é
+ * resistente a ambos. Mas mediana sozinha colapsa pra 0 quando 50%+ é zero —
+ * por isso filtramos os mortos (< 1 view/dia) antes de medianar.
+ *
+ * Why fixed 30-day baseline (not user's filter window): canais low-frequency
+ * (1 vídeo/semana) não teriam baseline confiável em janelas curtas.
+ *
+ * Per-channel scoping mantido (canal pequeno tem destaques).
  */
+const BASELINE_WINDOW_DAYS = 30;
+const BASELINE_MIN_ACTIVE = 3;
+const ACTIVE_FLOOR_VIEWS_PER_DAY = 1; // < 1 = morto, fora da baseline
+
 export async function getFlaggedVideos(
   filters: FlaggedVideosFilters = {}
 ): Promise<VideoInfo[]> {
@@ -755,78 +766,113 @@ export async function getFlaggedVideos(
   const sinceDays = filters.sinceDays ?? 30;
   const minPercent = filters.minPercent ?? 150;
   const since = new Date(Date.now() - sinceDays * 86_400_000);
+  const sinceBaseline = new Date(Date.now() - BASELINE_WINDOW_DAYS * 86_400_000);
 
-  // IMPORTANT: the type filter (shorts/longs) is applied AFTER the baseline
-  // is computed — otherwise a channel with few videos of the selected type
-  // (but plenty mixed) would fail the < 3 baseline cutoff and silently drop
-  // valid outliers. The baseline is "média do canal nessa janela", which
-  // intentionally mixes shorts + longs.
-  const allInWindow = await prisma.video.findMany({
-    where: {
-      deletedAt: null,
-      publishedAt: { gte: since },
-      ...(filters.channelId ? { channelId: filters.channelId } : {}),
-      ...(filters.categoryIds && filters.categoryIds.length > 0
-        ? {
-            channel: {
-              categories: { some: { categoryId: { in: filters.categoryIds } } },
-            },
-          }
-        : {}),
+  const channelFilter: Record<string, unknown> = {
+    deletedAt: null,
+    ...(filters.channelId ? { channelId: filters.channelId } : {}),
+    ...(filters.categoryIds && filters.categoryIds.length > 0
+      ? {
+          channel: {
+            categories: { some: { categoryId: { in: filters.categoryIds } } },
+          },
+        }
+      : {}),
+  };
+
+  // 1) Baseline pool — sempre últimos 30 dias.
+  const baselinePool = await prisma.video.findMany({
+    where: { ...channelFilter, publishedAt: { gte: sinceBaseline } },
+    include: {
+      snapshots: {
+        where: { deletedAt: null, takenAt: { gte: sinceBaseline } },
+        orderBy: { takenAt: 'asc' },
+        select: { takenAt: true, viewCount: true },
+      },
     },
-    include: { channel: { select: { title: true } } },
+    take: 10000,
+  });
+
+  // 2) Display pool — janela do usuário.
+  const displayPool = await prisma.video.findMany({
+    where: { ...channelFilter, publishedAt: { gte: since } },
+    include: {
+      channel: { select: { title: true } },
+      snapshots: {
+        where: { deletedAt: null, takenAt: { gte: sinceBaseline } },
+        orderBy: { takenAt: 'asc' },
+        select: { takenAt: true, viewCount: true },
+      },
+    },
     take: 5000,
   });
 
-  // Group by channel so each channel gets its own baseline.
-  const byChannel = new Map<string, typeof allInWindow>();
-  for (const v of allInWindow) {
-    const list = byChannel.get(v.channelId) ?? [];
+  // 3) Mediana per channel (com fallback type → mixed).
+  type ChannelBaseline = {
+    median: number;
+    kind: 'type' | 'mixed';
+    count: number;
+  };
+  const baselineByChannel = new Map<string, (typeof baselinePool)[number][]>();
+  for (const v of baselinePool) {
+    const list = baselineByChannel.get(v.channelId) ?? [];
     list.push(v);
-    byChannel.set(v.channelId, list);
+    baselineByChannel.set(v.channelId, list);
   }
 
-  type ScoredVideo = (typeof allInWindow)[number] & {
+  const computedBaseline = new Map<string, ChannelBaseline>();
+  for (const [channelId, channelVideos] of baselineByChannel) {
+    // Computa views/dia ativo (≥ 1) pra cada vídeo.
+    const allActive = channelVideos
+      .map((v) => ({ video: v, vpd: viewsPerDay(v) }))
+      .filter((x) => x.vpd >= ACTIVE_FLOOR_VIEWS_PER_DAY);
+
+    const typedActive = allActive.filter((x) =>
+      matchesVideoType(x.video.durationSec, filters.videoType)
+    );
+
+    let pool = typedActive;
+    let kind: 'type' | 'mixed' = 'type';
+    if (typedActive.length < BASELINE_MIN_ACTIVE) {
+      if (allActive.length < BASELINE_MIN_ACTIVE) continue;
+      pool = allActive;
+      kind = 'mixed';
+    }
+
+    const med = median(pool.map((x) => x.vpd));
+    if (med <= 0) continue;
+
+    computedBaseline.set(channelId, { median: med, kind, count: pool.length });
+  }
+
+  // 4) Score do display pool contra a mediana do canal.
+  type ScoredVideo = (typeof displayPool)[number] & {
     _outlierPercent: number;
     _channelAvg: number;
     _baselineKind: 'type' | 'mixed';
     _baselineCount: number;
+    _viewsPerDay: number;
   };
   const flagged: ScoredVideo[] = [];
 
-  for (const [, channelVideos] of byChannel) {
-    // Prefer per-type baseline (peer-to-peer comparison: shorts vs shorts,
-    // longs vs longs). Fall back to mixed when the channel doesn't have
-    // enough of the requested type in this window — otherwise outliers
-    // would silently disappear when the user picks a narrow type/period.
-    const typedVideos = channelVideos.filter((v) =>
-      matchesVideoType(v.durationSec, filters.videoType)
-    );
+  for (const v of displayPool) {
+    if (!matchesVideoType(v.durationSec, filters.videoType)) continue;
+    const baseline = computedBaseline.get(v.channelId);
+    if (!baseline) continue;
 
-    let baseline = typedVideos;
-    let baselineKind: 'type' | 'mixed' = 'type';
-    if (typedVideos.length < 3) {
-      if (channelVideos.length < 3) continue; // no useful baseline at all
-      baseline = channelVideos;
-      baselineKind = 'mixed';
-    }
+    const vpd = viewsPerDay(v);
+    if (vpd <= 0) continue;
 
-    const totalViews = baseline.reduce((s, v) => s + v.viewCount, 0);
-    const avg = totalViews / baseline.length;
-    if (avg <= 0) continue;
-
-    // Score every type-matching video against the chosen baseline.
-    for (const v of typedVideos) {
-      const pct = (v.viewCount / avg) * 100;
-      if (pct >= minPercent) {
-        flagged.push({
-          ...v,
-          _outlierPercent: pct,
-          _channelAvg: Math.round(avg),
-          _baselineKind: baselineKind,
-          _baselineCount: baseline.length,
-        });
-      }
+    const pct = (vpd / baseline.median) * 100;
+    if (pct >= minPercent) {
+      flagged.push({
+        ...v,
+        _outlierPercent: pct,
+        _channelAvg: Math.round(baseline.median),
+        _baselineKind: baseline.kind,
+        _baselineCount: baseline.count,
+        _viewsPerDay: Math.round(vpd),
+      });
     }
   }
 
@@ -844,12 +890,48 @@ export async function getFlaggedVideos(
     commentCount: v.commentCount,
     durationSec: v.durationSec,
     publishedAt: v.publishedAt.toISOString(),
-    channelAvgViewsAtCheck: v._channelAvg,
+    channelAvgViewsAtCheck: v._channelAvg, // agora é mediana de views/dia
     outlierPercent: v._outlierPercent,
     flaggedAsOutlier: true,
     baselineKind: v._baselineKind,
     baselineCount: v._baselineCount,
+    viewsPerDay: v._viewsPerDay,
   }));
+}
+
+/**
+ * Calcula views/dia recente do vídeo:
+ *   - Se tem ≥ 2 snapshots no período: delta entre primeiro e último ÷ dias decorridos
+ *   - Senão: views_totais ÷ idade_em_dias (lifetime, fallback até acumular snapshots)
+ */
+function viewsPerDay(v: {
+  viewCount: number;
+  publishedAt: Date;
+  snapshots: { takenAt: Date; viewCount: number }[];
+}): number {
+  if (v.snapshots.length >= 2) {
+    const first = v.snapshots[0]!;
+    const last = v.snapshots[v.snapshots.length - 1]!;
+    const elapsedDays = (last.takenAt.getTime() - first.takenAt.getTime()) / 86_400_000;
+    if (elapsedDays > 0) {
+      return Math.max(0, (last.viewCount - first.viewCount) / elapsedDays);
+    }
+  }
+  // Fallback: lifetime average.
+  const ageDays = (Date.now() - v.publishedAt.getTime()) / 86_400_000;
+  if (ageDays <= 0) return v.viewCount; // publicado agora — usa total
+  return v.viewCount / ageDays;
+}
+
+/** Mediana de uma lista (ordena cópia, devolve elemento central ou média dos 2 centrais). */
+function median(values: number[]): number {
+  if (values.length === 0) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  if (sorted.length % 2 === 0) {
+    return (sorted[mid - 1]! + sorted[mid]!) / 2;
+  }
+  return sorted[mid]!;
 }
 
 /**
