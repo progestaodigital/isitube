@@ -239,10 +239,13 @@ function extractAndRank(videos: DbVideo[]): KeywordSuggestion[] {
 
   // Filter:
   //   - tag: precisa estar em ≥ 2 vídeos OU ter views totais ≥ 10k
-  //   - title n-gram: precisa estar em ≥ 3 vídeos (mais rigoroso, é ruidoso)
+  //   - title n-gram: precisa estar em ≥ 2 vídeos. Os filtros estruturais
+  //     (FRAGMENT_STARTERS, GENERIC_TAILS, drop 1-grams) já removem o pior
+  //     ruído; exigir 3+ ocorrências eliminava quase tudo em canais que
+  //     postam vídeos de tópicos únicos (caso comum: Hormozi, Mateus Dias).
   const filtered = suggestions.filter((s) => {
     if (s.source === 'tag') return s.occurrences >= 2 || s.totalViews >= 10_000;
-    return s.occurrences >= 3;
+    return s.occurrences >= 2;
   });
 
   // Rank: tags primeiro (peso 2x nas occurrences), depois ngrams.

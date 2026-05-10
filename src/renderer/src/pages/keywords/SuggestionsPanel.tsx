@@ -101,7 +101,7 @@ export function SuggestionsPanel({ onSelectKeyword }: SuggestionsPanelProps) {
             <div className="py-6 text-center">
               <p className="text-xs text-zinc-500">
                 {tab === 'outliers'
-                  ? 'Nenhum vídeo sinalizado ainda — atualize seus canais pra ter destaques.'
+                  ? 'Nenhum candidato encontrado nos vídeos sinalizados. Pra resultados mais ricos, rode "Extrair informações" nos vídeos em destaque — isso popula as tags do criador (sinal mais forte que n-grams de título).'
                   : 'Nenhum vídeo evergreen ainda — precisa de pelo menos 2 atualizações pra calcular views/dia.'}
               </p>
             </div>
