@@ -569,13 +569,24 @@ export async function runUpdateAll(
         for (const s of stats) {
           const dbId = idMap.get(s.youtubeId);
           if (!dbId) continue;
+          // Only overwrite durationSec when the API returned a real value —
+          // protects against transient API quirks unsetting good data.
+          const updateData: {
+            viewCount: number;
+            likeCount: number | null;
+            commentCount: number | null;
+            durationSec?: number;
+          } = {
+            viewCount: s.viewCount,
+            likeCount: s.likeCount,
+            commentCount: s.commentCount,
+          };
+          if (s.durationSec !== null && s.durationSec > 0) {
+            updateData.durationSec = s.durationSec;
+          }
           await prisma.video.update({
             where: { id: dbId },
-            data: {
-              viewCount: s.viewCount,
-              likeCount: s.likeCount,
-              commentCount: s.commentCount,
-            },
+            data: updateData,
           });
           await prisma.videoSnapshot.create({
             data: {
@@ -816,6 +827,10 @@ export async function getFlaggedVideos(
  * YouTube Shorts are videos up to 3 minutes (180s) — current definition
  * since late 2024. Anything longer is treated as a "long-form" video.
  * Returns a Prisma where clause fragment, or an empty object for 'all'.
+ *
+ * 'unknown' targets videos with null/0 durationSec — typically premieres or
+ * lives ingested in a window where YouTube returned P0D. Those auto-heal on
+ * the next 'Atualizar agora' (refreshVideoStats now fetches contentDetails).
  */
 const SHORTS_MAX_DURATION_SEC = 180;
 
@@ -825,6 +840,9 @@ function durationFilter(videoType: VideoType | undefined) {
   }
   if (videoType === 'long') {
     return { durationSec: { gt: SHORTS_MAX_DURATION_SEC } };
+  }
+  if (videoType === 'unknown') {
+    return { OR: [{ durationSec: null }, { durationSec: 0 }] };
   }
   return {};
 }

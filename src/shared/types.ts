@@ -349,7 +349,7 @@ export type EvergreenFilters = {
   lookbackDays?: number;
 };
 
-export type VideoType = 'all' | 'shorts' | 'long';
+export type VideoType = 'all' | 'shorts' | 'long' | 'unknown';
 
 // =============================================================================
 // Categories

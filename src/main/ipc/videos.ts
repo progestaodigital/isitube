@@ -8,7 +8,7 @@ import {
 } from '../services/videos';
 import type { ExtractedVideosFilters, VideoType } from '@shared/types';
 
-const VALID_TYPES: VideoType[] = ['all', 'shorts', 'long'];
+const VALID_TYPES: VideoType[] = ['all', 'shorts', 'long', 'unknown'];
 
 export function registerVideosHandlers(): void {
   ipcMain.handle('videos:get-detail', async (_event, videoId: unknown) => {

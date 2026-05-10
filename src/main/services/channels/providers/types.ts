@@ -23,6 +23,12 @@ export type VideoStatsUpdate = {
   viewCount: number;
   likeCount: number | null;
   commentCount: number | null;
+  /**
+   * Duration in seconds. Refreshed alongside stats so that videos ingested
+   * during a live/premiere window (when YouTube returns P0D → null duration)
+   * heal themselves on the next update.
+   */
+  durationSec: number | null;
 };
 
 export type ListAllVideosOptions = {

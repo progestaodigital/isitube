@@ -154,7 +154,7 @@ export function EvergreenTab({ channels, categoryIds = [] }: EvergreenTabProps) 
               onChange={(e) =>
                 setFilters((f) => ({
                   ...f,
-                  videoType: e.target.value as 'all' | 'shorts' | 'long',
+                  videoType: e.target.value as 'all' | 'shorts' | 'long' | 'unknown',
                 }))
               }
               className="h-8 rounded-md border border-zinc-300 bg-white px-2 text-xs dark:border-zinc-700 dark:bg-zinc-900"
@@ -162,6 +162,7 @@ export function EvergreenTab({ channels, categoryIds = [] }: EvergreenTabProps) 
               <option value="all">Todos</option>
               <option value="shorts">Shorts (≤ 3min)</option>
               <option value="long">Vídeos longos (&gt; 3min)</option>
+              <option value="unknown">Sem duração detectada</option>
             </select>
           </FilterField>
           <FilterField label="Ordenar">

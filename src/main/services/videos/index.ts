@@ -180,7 +180,9 @@ export async function listExtractedVideos(
         ? { durationSec: { lte: SHORTS_MAX_DURATION_SEC, gt: 0 } }
         : filters.videoType === 'long'
           ? { durationSec: { gt: SHORTS_MAX_DURATION_SEC } }
-          : {}),
+          : filters.videoType === 'unknown'
+            ? { OR: [{ durationSec: null }, { durationSec: 0 }] }
+            : {}),
     },
     orderBy: { metadataExtractedAt: 'desc' },
     take: 200,

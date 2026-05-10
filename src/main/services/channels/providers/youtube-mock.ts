@@ -75,19 +75,23 @@ export class YouTubeMockProvider implements ChannelProvider {
 
   async refreshVideoStats(videoYoutubeIds: string[]): Promise<VideoStatsUpdate[]> {
     await delay(200, 500);
-    // Mock returns small drift on each call so per-video snapshots actually
-    // change between updates, exercising the evergreen detector in dev.
     return videoYoutubeIds.map((youtubeId) => {
       const seed = strHash(youtubeId) ^ Date.now();
       const rand = rng(seed);
       const baseViews = strHash(youtubeId) % 100_000 + 1_000;
       const drift = Math.floor(rand() * 200);
       const viewCount = baseViews + drift;
+      // Deterministic synthetic duration from the youtube id — matches what
+      // generateAllVideos used originally so the type filter can tell shorts
+      // from longs in dev mock.
+      const durSeed = strHash(youtubeId);
+      const durationSec = 60 + (durSeed % 1740); // 60s .. 1800s
       return {
         youtubeId,
         viewCount,
         likeCount: Math.round(viewCount * 0.04),
         commentCount: Math.round(viewCount * 0.003),
+        durationSec,
       };
     });
   }

@@ -117,9 +117,11 @@ export class YouTubeRealProvider implements ChannelProvider {
   async refreshVideoStats(videoYoutubeIds: string[]): Promise<VideoStatsUpdate[]> {
     if (videoYoutubeIds.length === 0) return [];
     const out: VideoStatsUpdate[] = [];
+    // contentDetails added so durationSec gets backfilled on every update —
+    // covers the live/premiere window where the first ingest captured P0D.
     for (const batch of chunk(videoYoutubeIds, VIDEOS_BATCH)) {
       const data = await this.fetchJSON(
-        `/videos?part=statistics&id=${batch.join(',')}`
+        `/videos?part=statistics,contentDetails&id=${batch.join(',')}`
       );
       for (const v of (data.items ?? []) as YoutubeVideoApiItem[]) {
         out.push({
@@ -127,6 +129,7 @@ export class YouTubeRealProvider implements ChannelProvider {
           viewCount: numOrZero(v.statistics?.viewCount),
           likeCount: numOrNull(v.statistics?.likeCount),
           commentCount: numOrNull(v.statistics?.commentCount),
+          durationSec: parseISO8601Duration(v.contentDetails?.duration),
         });
       }
     }

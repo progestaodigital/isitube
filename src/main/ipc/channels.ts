@@ -26,7 +26,7 @@ import type {
   VideoType,
 } from '@shared/types';
 
-const VALID_TYPES: VideoType[] = ['all', 'shorts', 'long'];
+const VALID_TYPES: VideoType[] = ['all', 'shorts', 'long', 'unknown'];
 const VALID_METRICS: ChannelTimeSeriesMetric[] = [
   'totalViews',
   'viewsPerDay',
