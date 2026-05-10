@@ -38,6 +38,14 @@ export function Sidebar() {
   const currentView = useRouterStore((s) => s.view);
   const navigate = useRouterStore((s) => s.navigate);
   const [counts, setCounts] = useState<Counts>(EMPTY_COUNTS);
+  const [appVersion, setAppVersion] = useState<string>('');
+
+  useEffect(() => {
+    window.api.app
+      .getVersion()
+      .then(setAppVersion)
+      .catch(() => setAppVersion(''));
+  }, []);
 
   const refresh = useCallback(async () => {
     try {
@@ -138,7 +146,7 @@ export function Sidebar() {
         })}
       </nav>
       <div className="border-t border-zinc-200 px-5 py-3 text-xs text-zinc-500 dark:border-zinc-800 dark:text-zinc-500">
-        v0.1.0 — Fase 8b
+        {appVersion ? `isiTube v${appVersion}` : 'isiTube'}
       </div>
     </aside>
   );

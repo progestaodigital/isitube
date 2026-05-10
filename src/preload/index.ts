@@ -235,6 +235,10 @@ const api: IsitubeAPI = {
       ipcRenderer.invoke('backup:github:restore', releaseId),
   },
 
+  app: {
+    getVersion: (): Promise<string> => ipcRenderer.invoke('app:get-version'),
+  },
+
   updates: {
     check: (): Promise<{
       currentVersion: string;
@@ -245,8 +249,30 @@ const api: IsitubeAPI = {
       publishedAt: string | null;
       assetUrl: string | null;
       assetSize: number | null;
+      assetId: number | null;
       error: string | null;
     }> => ipcRenderer.invoke('updates:check'),
+    listAll: (): Promise<{
+      releases: Array<{
+        version: string;
+        tagName: string;
+        name: string;
+        publishedAt: string;
+        releaseUrl: string;
+        releaseNotes: string | null;
+        assetId: number | null;
+        assetSize: number | null;
+        isCurrent: boolean;
+        isNewer: boolean;
+        isOlder: boolean;
+      }>;
+      error: string | null;
+    }> => ipcRenderer.invoke('updates:list-all'),
+    downloadAndInstall: (
+      assetId: number,
+      fileName: string
+    ): Promise<{ success: boolean; message: string }> =>
+      ipcRenderer.invoke('updates:download-and-install', assetId, fileName),
     openUrl: (url: string): Promise<void> => ipcRenderer.invoke('updates:open-url', url),
   },
 
