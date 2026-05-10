@@ -10,6 +10,26 @@ const API_BASE = 'https://www.googleapis.com/youtube/v3';
 const VIDEOS_BATCH = 50; // YouTube videos.list max ids per request
 const PLAYLIST_PAGE = 50; // YouTube playlistItems.list max per page
 
+// Mapeamento dos categoryIds da API pra labels em pt-BR. Lista oficial do
+// YouTube — ids estáveis ao longo dos anos.
+const CATEGORY_NAMES_PT_BR: Record<string, string> = {
+  '1': 'Filme & Animação',
+  '2': 'Carros & Veículos',
+  '10': 'Música',
+  '15': 'Animais',
+  '17': 'Esportes',
+  '19': 'Viagem & Eventos',
+  '20': 'Jogos',
+  '22': 'Pessoas & Blogs',
+  '23': 'Comédia',
+  '24': 'Entretenimento',
+  '25': 'Notícias & Política',
+  '26': 'Como fazer & Estilo',
+  '27': 'Educação',
+  '28': 'Ciência & Tecnologia',
+  '29': 'Sem fins lucrativos',
+};
+
 /**
  * Real YouTube Data API v3 provider. Selected by the factory only when the
  * user's `youtube` credential is in `valid` status.
@@ -117,19 +137,31 @@ export class YouTubeRealProvider implements ChannelProvider {
   async refreshVideoStats(videoYoutubeIds: string[]): Promise<VideoStatsUpdate[]> {
     if (videoYoutubeIds.length === 0) return [];
     const out: VideoStatsUpdate[] = [];
-    // contentDetails added so durationSec gets backfilled on every update —
-    // covers the live/premiere window where the first ingest captured P0D.
+    // snippet adicionado pra trazer description + tags + language + category
+    // no mesmo request. Custo: zero unidades a mais (videos.list cobra por
+    // chamada, não por part). Caller decide se grava ou não baseado em
+    // metadataExtractedAt.
     for (const batch of chunk(videoYoutubeIds, VIDEOS_BATCH)) {
       const data = await this.fetchJSON(
-        `/videos?part=statistics,contentDetails&id=${batch.join(',')}`
+        `/videos?part=snippet,statistics,contentDetails&id=${batch.join(',')}`
       );
       for (const v of (data.items ?? []) as YoutubeVideoApiItem[]) {
+        const thumbs = v.snippet?.thumbnails ?? {};
         out.push({
           youtubeId: v.id,
           viewCount: numOrZero(v.statistics?.viewCount),
           likeCount: numOrNull(v.statistics?.likeCount),
           commentCount: numOrNull(v.statistics?.commentCount),
           durationSec: parseISO8601Duration(v.contentDetails?.duration),
+          description: v.snippet?.description ?? null,
+          tags: Array.isArray(v.snippet?.tags) ? v.snippet.tags : null,
+          thumbnailHdUrl:
+            thumbs.maxres?.url ?? thumbs.high?.url ?? thumbs.medium?.url ?? null,
+          language: v.snippet?.defaultAudioLanguage ?? v.snippet?.defaultLanguage ?? null,
+          category: v.snippet?.categoryId
+            ? CATEGORY_NAMES_PT_BR[v.snippet.categoryId] ?? v.snippet.categoryId
+            : null,
+          liveBroadcastStatus: v.snippet?.liveBroadcastContent ?? null,
         });
       }
     }
@@ -154,7 +186,10 @@ export class YouTubeRealProvider implements ChannelProvider {
 
   /**
    * Hydrate full video details (snippet + statistics + duration) for a list of
-   * video ids. Batches into groups of 50 (videos.list cap).
+   * video ids. Batches into groups of 50 (videos.list cap). Preserves the
+   * "rich" metadata fields (description, tags, language, category, hi-res
+   * thumb) — same call that already fetches stats, so cost stays at 1 unit
+   * per 50 videos.
    */
   private async fetchVideoDetails(
     ids: string[],
@@ -180,6 +215,15 @@ export class YouTubeRealProvider implements ChannelProvider {
             v.snippet?.publishedAt ??
             publishedAtFallback.get(v.id) ??
             new Date().toISOString(),
+          description: v.snippet?.description ?? null,
+          tags: Array.isArray(v.snippet?.tags) ? v.snippet.tags : null,
+          thumbnailHdUrl:
+            thumbs.maxres?.url ?? thumbs.high?.url ?? thumbs.medium?.url ?? null,
+          language: v.snippet?.defaultAudioLanguage ?? v.snippet?.defaultLanguage ?? null,
+          category: v.snippet?.categoryId
+            ? CATEGORY_NAMES_PT_BR[v.snippet.categoryId] ?? v.snippet.categoryId
+            : null,
+          liveBroadcastStatus: v.snippet?.liveBroadcastContent ?? null,
         });
       }
     }
@@ -261,10 +305,18 @@ type YoutubeVideoApiItem = {
   snippet?: {
     title?: string;
     publishedAt?: string;
+    description?: string;
+    tags?: string[];
+    categoryId?: string;
+    defaultLanguage?: string;
+    defaultAudioLanguage?: string;
+    liveBroadcastContent?: string;
     thumbnails?: {
       default?: { url?: string };
       medium?: { url?: string };
       high?: { url?: string };
+      standard?: { url?: string };
+      maxres?: { url?: string };
     };
   };
   statistics?: {

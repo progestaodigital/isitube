@@ -81,17 +81,15 @@ export class YouTubeMockProvider implements ChannelProvider {
       const baseViews = strHash(youtubeId) % 100_000 + 1_000;
       const drift = Math.floor(rand() * 200);
       const viewCount = baseViews + drift;
-      // Deterministic synthetic duration from the youtube id — matches what
-      // generateAllVideos used originally so the type filter can tell shorts
-      // from longs in dev mock.
       const durSeed = strHash(youtubeId);
-      const durationSec = 60 + (durSeed % 1740); // 60s .. 1800s
+      const durationSec = 60 + (durSeed % 1740);
       return {
         youtubeId,
         viewCount,
         likeCount: Math.round(viewCount * 0.04),
         commentCount: Math.round(viewCount * 0.003),
         durationSec,
+        ...mockMetadata(youtubeId),
       };
     });
   }
@@ -133,9 +131,51 @@ export class YouTubeMockProvider implements ChannelProvider {
         commentCount: Math.round(viewCount * (0.001 + rand() * 0.005)),
         durationSec,
         publishedAt,
+        ...mockMetadata(youtubeId),
       };
     });
   }
+}
+
+/**
+ * Metadata sintética determinística por youtubeId — mesmas tags/description/etc
+ * sempre, pra que mock fique reproduzível. Categoria escolhida em pool fixo
+ * pra exercitar o filtro de categoria na UI.
+ */
+const MOCK_TAG_POOL = [
+  'tutorial', 'guia', 'dicas', 'iniciantes', 'avançado', 'tecnologia',
+  'inteligência artificial', 'produtividade', 'finanças pessoais',
+  'empreendedorismo', 'marketing digital', 'youtube', 'criação de conteúdo',
+];
+const MOCK_CATEGORIES = [
+  'Educação', 'Como fazer & Estilo', 'Ciência & Tecnologia', 'Pessoas & Blogs',
+];
+const MOCK_LANGUAGES = ['pt-BR', 'en-US', 'pt'];
+
+function mockMetadata(youtubeId: string): {
+  description: string;
+  tags: string[];
+  thumbnailHdUrl: string | null;
+  language: string;
+  category: string;
+  liveBroadcastStatus: string;
+} {
+  const seed = strHash(youtubeId);
+  const rand = rng(seed);
+  const numTags = 3 + Math.floor(rand() * 5); // 3-7 tags
+  const tags = Array.from({ length: numTags }, () =>
+    MOCK_TAG_POOL[Math.floor(rand() * MOCK_TAG_POOL.length)]!
+  );
+  return {
+    description:
+      `Descrição mock pro vídeo ${youtubeId.slice(0, 6)}.\n\nLinks úteis:\n` +
+      `https://isitube.app\nhttps://example.com\n\nTimestamps:\n00:00 Intro\n01:30 Conteúdo\n08:00 Conclusão`,
+    tags: Array.from(new Set(tags)),
+    thumbnailHdUrl: null,
+    language: MOCK_LANGUAGES[Math.floor(rand() * MOCK_LANGUAGES.length)]!,
+    category: MOCK_CATEGORIES[Math.floor(rand() * MOCK_CATEGORIES.length)]!,
+    liveBroadcastStatus: 'none',
+  };
 }
 
 function mockVideoYoutubeId(channelId: string, index: number): string {

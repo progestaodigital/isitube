@@ -16,6 +16,15 @@ export type FetchedVideo = {
   commentCount: number | null;
   durationSec: number | null;
   publishedAt: string; // ISO
+
+  // Metadata "rica" — vinha só via 'Extrair informações' manual; agora é
+  // populada automaticamente em todo update (snippet já vem na mesma chamada).
+  description: string | null;
+  tags: string[] | null;
+  thumbnailHdUrl: string | null;
+  language: string | null;
+  category: string | null;
+  liveBroadcastStatus: string | null;
 };
 
 export type VideoStatsUpdate = {
@@ -29,6 +38,15 @@ export type VideoStatsUpdate = {
    * heal themselves on the next update.
    */
   durationSec: number | null;
+
+  // Metadata vinda no mesmo request (part=snippet,statistics,contentDetails).
+  // Custo zero a mais em quota — only response payload cresce.
+  description: string | null;
+  tags: string[] | null;
+  thumbnailHdUrl: string | null;
+  language: string | null;
+  category: string | null;
+  liveBroadcastStatus: string | null;
 };
 
 export type ListAllVideosOptions = {

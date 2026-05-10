@@ -51,6 +51,35 @@ const LOOKBACK_KEY = 'channels.lookback_days';
 const VIDEO_SNAPSHOT_RETENTION_DAYS = 90;
 const CHANNEL_SNAPSHOT_RETENTION_DAYS = 365;
 
+/**
+ * Monta o patch de metadata pra prisma.video.create/update. Os campos vêm
+ * do FetchedVideo ou VideoStatsUpdate (compatíveis no shape de metadata).
+ * Só inclui campos que vieram do provider (não-nulos), pra não sobrescrever
+ * com null se o provider não retornou.
+ */
+function metadataPatch(
+  v: {
+    description: string | null;
+    tags: string[] | null;
+    thumbnailHdUrl: string | null;
+    language: string | null;
+    category: string | null;
+    liveBroadcastStatus: string | null;
+  },
+  extractedAt: Date
+): Record<string, unknown> {
+  const patch: Record<string, unknown> = {
+    metadataExtractedAt: extractedAt,
+  };
+  if (v.description !== null) patch.description = v.description;
+  if (v.tags !== null) patch.tags = JSON.stringify(v.tags);
+  if (v.thumbnailHdUrl !== null) patch.thumbnailHdUrl = v.thumbnailHdUrl;
+  if (v.language !== null) patch.language = v.language;
+  if (v.category !== null) patch.category = v.category;
+  if (v.liveBroadcastStatus !== null) patch.liveBroadcastStatus = v.liveBroadcastStatus;
+  return patch;
+}
+
 // =============================================================================
 // CRUD
 // =============================================================================
@@ -175,6 +204,7 @@ async function ingestAllVideosForChannel(
   let ingested = 0;
   let skippedDeleted = 0;
 
+  const now = new Date();
   for (const v of fetched) {
     const existing = await prisma.video.findUnique({
       where: { youtubeId: v.youtubeId },
@@ -198,6 +228,9 @@ async function ingestAllVideosForChannel(
           commentCount: v.commentCount,
           durationSec: v.durationSec,
           publishedAt: new Date(v.publishedAt),
+          // Metadata: só escreve se ainda não tinha sido extraída (respeita
+          // extrações manuais já feitas e evita reescrever o que não mudou).
+          ...(existing.metadataExtractedAt ? {} : metadataPatch(v, now)),
         },
       });
       videoRecordId = existing.id;
@@ -213,6 +246,7 @@ async function ingestAllVideosForChannel(
           commentCount: v.commentCount,
           durationSec: v.durationSec,
           publishedAt: new Date(v.publishedAt),
+          ...metadataPatch(v, now),
         },
       });
       videoRecordId = created.id;
@@ -595,6 +629,7 @@ export async function runUpdateAll(
         /* tolerate — re-snapshot path below still runs */
       }
 
+      const updateRunNow = new Date();
       for (const v of newVideos) {
         const existing = await prisma.video.findUnique({
           where: { youtubeId: v.youtubeId },
@@ -612,6 +647,7 @@ export async function runUpdateAll(
               commentCount: v.commentCount,
               durationSec: v.durationSec,
               publishedAt: new Date(v.publishedAt),
+              ...(existing.metadataExtractedAt ? {} : metadataPatch(v, updateRunNow)),
             },
           });
         } else {
@@ -626,6 +662,7 @@ export async function runUpdateAll(
               commentCount: v.commentCount,
               durationSec: v.durationSec,
               publishedAt: new Date(v.publishedAt),
+              ...metadataPatch(v, updateRunNow),
             },
           });
           videosNew += 1;
@@ -635,28 +672,27 @@ export async function runUpdateAll(
       // 3) Re-snapshot ALL stored videos for this channel (cheap: ~1 unit per
       //    50 videos). This is what the evergreen detector reads — we need a
       //    fresh data point per update for every video, not just new ones.
+      //    Bonus: refreshVideoStats traz description+tags+language no mesmo
+      //    request (custo zero a mais de quota). Metadata só é gravada pra
+      //    vídeos sem metadataExtractedAt (vídeos já extraídos manualmente
+      //    ficam intactos).
       const storedVideos = await prisma.video.findMany({
         where: { channelId: channel.id, deletedAt: null },
-        select: { id: true, youtubeId: true },
+        select: { id: true, youtubeId: true, metadataExtractedAt: true },
       });
 
       if (storedVideos.length > 0) {
-        const idMap = new Map(storedVideos.map((v) => [v.youtubeId, v.id]));
+        const idMap = new Map(
+          storedVideos.map((v) => [v.youtubeId, { id: v.id, extracted: v.metadataExtractedAt }])
+        );
         const stats = await provider.refreshVideoStats(
           storedVideos.map((v) => v.youtubeId)
         );
 
         for (const s of stats) {
-          const dbId = idMap.get(s.youtubeId);
-          if (!dbId) continue;
-          // Only overwrite durationSec when the API returned a real value —
-          // protects against transient API quirks unsetting good data.
-          const updateData: {
-            viewCount: number;
-            likeCount: number | null;
-            commentCount: number | null;
-            durationSec?: number;
-          } = {
+          const entry = idMap.get(s.youtubeId);
+          if (!entry) continue;
+          const updateData: Record<string, unknown> = {
             viewCount: s.viewCount,
             likeCount: s.likeCount,
             commentCount: s.commentCount,
@@ -664,13 +700,17 @@ export async function runUpdateAll(
           if (s.durationSec !== null && s.durationSec > 0) {
             updateData.durationSec = s.durationSec;
           }
+          // Auto-extract metadata se ainda não foi extraída pra esse vídeo.
+          if (!entry.extracted) {
+            Object.assign(updateData, metadataPatch(s, updateRunNow));
+          }
           await prisma.video.update({
-            where: { id: dbId },
+            where: { id: entry.id },
             data: updateData,
           });
           await prisma.videoSnapshot.create({
             data: {
-              videoId: dbId,
+              videoId: entry.id,
               viewCount: s.viewCount,
               likeCount: s.likeCount,
               commentCount: s.commentCount,
