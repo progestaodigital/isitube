@@ -9,9 +9,16 @@ interface VideoCardProps {
   onDelete?: (videoId: string) => void;
   /** Janela usada pelo filtro atual — vai pro label "média do canal nos últimos X dias". */
   windowDays?: number;
+  /** Tipo selecionado pelo filtro — modifica o label da média ("dos shorts", "dos longos", etc). */
+  videoType?: 'all' | 'shorts' | 'long' | 'unknown';
 }
 
-export function VideoCard({ video, onDelete, windowDays = 30 }: VideoCardProps) {
+export function VideoCard({
+  video,
+  onDelete,
+  windowDays = 30,
+  videoType = 'all',
+}: VideoCardProps) {
   const open = useVideoDetailStore((s) => s.open);
   const [confirming, setConfirming] = useState(false);
   const pct = video.outlierPercent ?? 0;
@@ -94,7 +101,7 @@ export function VideoCard({ video, onDelete, windowDays = 30 }: VideoCardProps) 
           <Stat icon={Calendar} text={formatRelativeDate(video.publishedAt)} />
           {video.channelAvgViewsAtCheck && video.channelAvgViewsAtCheck > 0 && (
             <span className="text-zinc-500">
-              média do canal nos últimos {windowDays} dias:{' '}
+              média {videoTypeLabel(videoType)} do canal nos últimos {windowDays} dias:{' '}
               {formatCompact(video.channelAvgViewsAtCheck)}
             </span>
           )}
@@ -102,6 +109,13 @@ export function VideoCard({ video, onDelete, windowDays = 30 }: VideoCardProps) 
       </div>
     </button>
   );
+}
+
+function videoTypeLabel(type: 'all' | 'shorts' | 'long' | 'unknown'): string {
+  if (type === 'shorts') return 'dos shorts';
+  if (type === 'long') return 'dos vídeos longos';
+  if (type === 'unknown') return '(sem duração)';
+  return '';
 }
 
 function Stat({ icon: Icon, text }: { icon: typeof Eye; text: string }) {

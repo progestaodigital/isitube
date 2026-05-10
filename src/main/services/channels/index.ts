@@ -793,16 +793,20 @@ export async function getFlaggedVideos(
   const flagged: ScoredVideo[] = [];
 
   for (const [, channelVideos] of byChannel) {
-    // Need at least 3 videos in the window to have a meaningful baseline.
-    if (channelVideos.length < 3) continue;
-    const totalViews = channelVideos.reduce((s, v) => s + v.viewCount, 0);
-    const avg = totalViews / channelVideos.length;
+    // Per-type baseline: shorts compared only to shorts, longs only to longs.
+    // Peer-to-peer comparison is more meaningful for content strategy than
+    // mixing formats with very different view profiles.
+    const typedVideos = channelVideos.filter((v) =>
+      matchesVideoType(v.durationSec, filters.videoType)
+    );
+
+    // Need at least 3 type-matching videos to have a meaningful baseline.
+    if (typedVideos.length < 3) continue;
+    const totalViews = typedVideos.reduce((s, v) => s + v.viewCount, 0);
+    const avg = totalViews / typedVideos.length;
     if (avg <= 0) continue;
 
-    for (const v of channelVideos) {
-      // Apply the type filter HERE — baseline already locked in above.
-      if (!matchesVideoType(v.durationSec, filters.videoType)) continue;
-
+    for (const v of typedVideos) {
       const pct = (v.viewCount / avg) * 100;
       if (pct >= minPercent) {
         flagged.push({ ...v, _outlierPercent: pct, _channelAvg: Math.round(avg) });

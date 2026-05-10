@@ -110,7 +110,8 @@ export function FlaggedVideosList({
         </div>
         <p className="mt-2 text-[11px] text-zinc-500">
           Cada vídeo é comparado com a média de views do mesmo canal{' '}
-          <b>na mesma janela escolhida</b>. Mude o período e a média recalcula.
+          <b>na mesma janela e do mesmo tipo</b> (shorts vs longs). Mude o período
+          ou tipo e a média recalcula. Mín. 3 vídeos do tipo no período pra ter baseline.
         </p>
       </Card>
 
@@ -130,6 +131,7 @@ export function FlaggedVideosList({
               video={v}
               onDelete={onDeleteVideo}
               windowDays={filters.sinceDays ?? 30}
+              videoType={filters.videoType ?? 'all'}
             />
           ))}
         </div>
