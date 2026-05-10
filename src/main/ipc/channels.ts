@@ -3,6 +3,7 @@ import {
   addChannel,
   backfillAllChannels,
   backfillChannel,
+  cleanupOldSnapshots,
   dismissStartupSuggestion,
   getChannelVideos,
   getFlaggedVideos,
@@ -120,6 +121,12 @@ export function registerChannelsHandlers(): void {
   });
 
   ipcMain.handle('channels:backfill-all', async () => backfillAllChannels());
+
+  ipcMain.handle('channels:snapshots-stats', async () =>
+    cleanupOldSnapshots({ dryRun: true })
+  );
+
+  ipcMain.handle('channels:snapshots-cleanup', async () => cleanupOldSnapshots());
 
   ipcMain.handle('channels:list-update-runs', async (_event, limit: unknown) => {
     const n = typeof limit === 'number' ? limit : 10;

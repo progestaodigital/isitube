@@ -117,6 +117,18 @@ const api: IsitubeAPI = {
         skippedDeleted: number;
       }>;
     }> => ipcRenderer.invoke('channels:backfill-all'),
+    snapshotsStats: (): Promise<{
+      videoSnapshots: number;
+      channelSnapshots: number;
+      videoCutoff: string;
+      channelCutoff: string;
+    }> => ipcRenderer.invoke('channels:snapshots-stats'),
+    snapshotsCleanup: (): Promise<{
+      videoSnapshots: number;
+      channelSnapshots: number;
+      videoCutoff: string;
+      channelCutoff: string;
+    }> => ipcRenderer.invoke('channels:snapshots-cleanup'),
     listUpdateRuns: (limit?: number): Promise<UpdateRunInfo[]> =>
       ipcRenderer.invoke('channels:list-update-runs', limit),
     getStartupAction: (): Promise<StartupAction> =>

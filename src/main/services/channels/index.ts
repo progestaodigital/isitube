@@ -44,6 +44,13 @@ const SUGGESTION_DISMISSED_KEY = 'channels.suggestion_dismissed_until';
 const THRESHOLD_KEY = 'channels.outlier_threshold_percent';
 const LOOKBACK_KEY = 'channels.lookback_days';
 
+// Retenção de snapshots — VideoSnapshot é volumoso (1 por vídeo por update),
+// ChannelSnapshot é leve (1 por canal por update). Mantemos VideoSnapshot
+// por 90d (cobre baseline outlier de 30d + intervalos de evergreen) e
+// ChannelSnapshot por 1 ano (cobre o maior range de charts: 180d).
+const VIDEO_SNAPSHOT_RETENTION_DAYS = 90;
+const CHANNEL_SNAPSHOT_RETENTION_DAYS = 365;
+
 // =============================================================================
 // CRUD
 // =============================================================================
@@ -781,6 +788,13 @@ export async function runUpdateAll(
     },
   });
 
+  // Best-effort retention pass — não falha o update se a limpeza der erro.
+  try {
+    await cleanupOldSnapshots();
+  } catch {
+    /* swallow */
+  }
+
   return projectUpdateRun(updated);
 }
 
@@ -1190,4 +1204,50 @@ export async function dismissStartupSuggestion(): Promise<void> {
   // opens the app the same day.
   const until = new Date(Date.now() + 12 * 60 * 60 * 1000);
   await setSetting(SUGGESTION_DISMISSED_KEY, until.toISOString());
+}
+
+// =============================================================================
+// Snapshot retention — keeps DB lean over time
+// =============================================================================
+
+/**
+ * Hard-deletes snapshots beyond the retention window. Runs at the end of
+ * every "Atualizar agora" and can be triggered manually via the data section.
+ *
+ * Returns the row counts removed (or what *would* be removed in dry-run).
+ */
+export async function cleanupOldSnapshots(options: { dryRun?: boolean } = {}): Promise<{
+  videoSnapshots: number;
+  channelSnapshots: number;
+  videoCutoff: string;
+  channelCutoff: string;
+}> {
+  const prisma = getPrisma();
+  const videoCutoff = new Date(Date.now() - VIDEO_SNAPSHOT_RETENTION_DAYS * 86_400_000);
+  const channelCutoff = new Date(Date.now() - CHANNEL_SNAPSHOT_RETENTION_DAYS * 86_400_000);
+
+  if (options.dryRun) {
+    const [videoCount, channelCount] = await Promise.all([
+      prisma.videoSnapshot.count({ where: { takenAt: { lt: videoCutoff } } }),
+      prisma.channelSnapshot.count({ where: { takenAt: { lt: channelCutoff } } }),
+    ]);
+    return {
+      videoSnapshots: videoCount,
+      channelSnapshots: channelCount,
+      videoCutoff: videoCutoff.toISOString(),
+      channelCutoff: channelCutoff.toISOString(),
+    };
+  }
+
+  const [videoResult, channelResult] = await Promise.all([
+    prisma.videoSnapshot.deleteMany({ where: { takenAt: { lt: videoCutoff } } }),
+    prisma.channelSnapshot.deleteMany({ where: { takenAt: { lt: channelCutoff } } }),
+  ]);
+
+  return {
+    videoSnapshots: videoResult.count,
+    channelSnapshots: channelResult.count,
+    videoCutoff: videoCutoff.toISOString(),
+    channelCutoff: channelCutoff.toISOString(),
+  };
 }

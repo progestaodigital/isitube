@@ -1,14 +1,56 @@
-import { useState } from 'react';
-import { Trash2, AlertTriangle } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Trash2, AlertTriangle, Database, Sparkles } from 'lucide-react';
 import { Section } from './Section';
 import { Button } from '../../components/ui/Button';
 import { Modal } from '../../components/ui/Modal';
 import { useToastStore } from '../../stores/toast';
 
+type SnapshotsStats = {
+  videoSnapshots: number;
+  channelSnapshots: number;
+  videoCutoff: string;
+  channelCutoff: string;
+};
+
 export function DataSection() {
   const showToast = useToastStore((s) => s.show);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [snapStats, setSnapStats] = useState<SnapshotsStats | null>(null);
+  const [cleaning, setCleaning] = useState(false);
+
+  async function refreshSnapStats() {
+    try {
+      setSnapStats(await window.api.channels.snapshotsStats());
+    } catch {
+      /* ignore */
+    }
+  }
+
+  useEffect(() => {
+    refreshSnapStats();
+  }, []);
+
+  async function handleCleanupSnapshots() {
+    setCleaning(true);
+    try {
+      const result = await window.api.channels.snapshotsCleanup();
+      showToast({
+        kind: 'success',
+        title: 'Snapshots antigos removidos',
+        description: `${result.videoSnapshots} de vídeo + ${result.channelSnapshots} de canal apagados.`,
+      });
+      await refreshSnapStats();
+    } catch (err) {
+      showToast({
+        kind: 'error',
+        title: 'Falha na limpeza',
+        description: err instanceof Error ? err.message : String(err),
+      });
+    } finally {
+      setCleaning(false);
+    }
+  }
 
   async function handleConfirmReset() {
     setBusy(true);
@@ -33,6 +75,41 @@ export function DataSection() {
 
   return (
     <>
+      <Section
+        title="Snapshots históricos"
+        description="A cada 'Atualizar agora' o sistema guarda um snapshot de views de cada vídeo e canal. Isso alimenta evergreen, comparativo e detector de destaque. Snapshots antigos são apagados automaticamente; aqui dá pra forçar a limpeza."
+      >
+        <div className="space-y-3">
+          {snapStats && (
+            <div className="flex items-start gap-3 rounded-lg border border-zinc-200 p-3 text-xs dark:border-zinc-800">
+              <Database className="mt-0.5 h-4 w-4 shrink-0 text-zinc-500" />
+              <div className="text-zinc-700 dark:text-zinc-300">
+                <p>
+                  Pendentes pra limpeza:{' '}
+                  <b>{snapStats.videoSnapshots.toLocaleString('pt-BR')}</b> snapshots de vídeo
+                  {' '}(&gt; 90 dias) e{' '}
+                  <b>{snapStats.channelSnapshots.toLocaleString('pt-BR')}</b> snapshots de canal
+                  {' '}(&gt; 365 dias).
+                </p>
+                <p className="mt-1 text-[11px] text-zinc-500">
+                  A limpeza roda automaticamente após cada "Atualizar agora". Use o botão
+                  abaixo só se quiser forçar agora.
+                </p>
+              </div>
+            </div>
+          )}
+          <Button
+            onClick={handleCleanupSnapshots}
+            disabled={cleaning}
+            variant="secondary"
+            size="sm"
+          >
+            <Sparkles className={`h-4 w-4 ${cleaning ? 'animate-pulse' : ''}`} />
+            {cleaning ? 'Limpando...' : 'Limpar snapshots antigos'}
+          </Button>
+        </div>
+      </Section>
+
       <Section
         title="Dados de monitoramento"
         description="Apagar canais cadastrados e vídeos extraídos. Suas chaves de API, agendamentos e configurações ficam intactos."
