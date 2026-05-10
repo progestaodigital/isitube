@@ -756,7 +756,12 @@ export async function getFlaggedVideos(
   const minPercent = filters.minPercent ?? 150;
   const since = new Date(Date.now() - sinceDays * 86_400_000);
 
-  const candidates = await prisma.video.findMany({
+  // IMPORTANT: the type filter (shorts/longs) is applied AFTER the baseline
+  // is computed — otherwise a channel with few videos of the selected type
+  // (but plenty mixed) would fail the < 3 baseline cutoff and silently drop
+  // valid outliers. The baseline is "média do canal nessa janela", which
+  // intentionally mixes shorts + longs.
+  const allInWindow = await prisma.video.findMany({
     where: {
       deletedAt: null,
       publishedAt: { gte: since },
@@ -768,21 +773,20 @@ export async function getFlaggedVideos(
             },
           }
         : {}),
-      ...durationFilter(filters.videoType),
     },
     include: { channel: { select: { title: true } } },
     take: 5000,
   });
 
   // Group by channel so each channel gets its own baseline.
-  const byChannel = new Map<string, typeof candidates>();
-  for (const v of candidates) {
+  const byChannel = new Map<string, typeof allInWindow>();
+  for (const v of allInWindow) {
     const list = byChannel.get(v.channelId) ?? [];
     list.push(v);
     byChannel.set(v.channelId, list);
   }
 
-  type ScoredVideo = (typeof candidates)[number] & {
+  type ScoredVideo = (typeof allInWindow)[number] & {
     _outlierPercent: number;
     _channelAvg: number;
   };
@@ -796,6 +800,9 @@ export async function getFlaggedVideos(
     if (avg <= 0) continue;
 
     for (const v of channelVideos) {
+      // Apply the type filter HERE — baseline already locked in above.
+      if (!matchesVideoType(v.durationSec, filters.videoType)) continue;
+
       const pct = (v.viewCount / avg) * 100;
       if (pct >= minPercent) {
         flagged.push({ ...v, _outlierPercent: pct, _channelAvg: Math.round(avg) });
@@ -845,6 +852,28 @@ function durationFilter(videoType: VideoType | undefined) {
     return { OR: [{ durationSec: null }, { durationSec: 0 }] };
   }
   return {};
+}
+
+/**
+ * In-memory equivalent of `durationFilter` — used when we need to apply the
+ * type filter AFTER pulling videos (e.g., outlier baseline must be computed
+ * across all types before restricting the result set).
+ */
+function matchesVideoType(
+  durationSec: number | null,
+  videoType: VideoType | undefined
+): boolean {
+  if (!videoType || videoType === 'all') return true;
+  if (videoType === 'shorts') {
+    return durationSec !== null && durationSec > 0 && durationSec <= SHORTS_MAX_DURATION_SEC;
+  }
+  if (videoType === 'long') {
+    return durationSec !== null && durationSec > SHORTS_MAX_DURATION_SEC;
+  }
+  if (videoType === 'unknown') {
+    return durationSec === null || durationSec === 0;
+  }
+  return true;
 }
 
 export async function getChannelVideos(channelId: string): Promise<VideoInfo[]> {
