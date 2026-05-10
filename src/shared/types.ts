@@ -178,6 +178,13 @@ export type VideoInfo = {
   channelAvgViewsAtCheck: number | null;
   outlierPercent: number | null;
   flaggedAsOutlier: boolean;
+  /**
+   * Set only by getFlaggedVideos: indicates whether the per-video baseline was
+   * the same-type subset of the channel ('type') or a fallback to the channel's
+   * full mixed list because there were too few same-type videos in the window.
+   */
+  baselineKind?: 'type' | 'mixed';
+  baselineCount?: number;
 };
 
 export type AddChannelResult = {

@@ -789,27 +789,43 @@ export async function getFlaggedVideos(
   type ScoredVideo = (typeof allInWindow)[number] & {
     _outlierPercent: number;
     _channelAvg: number;
+    _baselineKind: 'type' | 'mixed';
+    _baselineCount: number;
   };
   const flagged: ScoredVideo[] = [];
 
   for (const [, channelVideos] of byChannel) {
-    // Per-type baseline: shorts compared only to shorts, longs only to longs.
-    // Peer-to-peer comparison is more meaningful for content strategy than
-    // mixing formats with very different view profiles.
+    // Prefer per-type baseline (peer-to-peer comparison: shorts vs shorts,
+    // longs vs longs). Fall back to mixed when the channel doesn't have
+    // enough of the requested type in this window — otherwise outliers
+    // would silently disappear when the user picks a narrow type/period.
     const typedVideos = channelVideos.filter((v) =>
       matchesVideoType(v.durationSec, filters.videoType)
     );
 
-    // Need at least 3 type-matching videos to have a meaningful baseline.
-    if (typedVideos.length < 3) continue;
-    const totalViews = typedVideos.reduce((s, v) => s + v.viewCount, 0);
-    const avg = totalViews / typedVideos.length;
+    let baseline = typedVideos;
+    let baselineKind: 'type' | 'mixed' = 'type';
+    if (typedVideos.length < 3) {
+      if (channelVideos.length < 3) continue; // no useful baseline at all
+      baseline = channelVideos;
+      baselineKind = 'mixed';
+    }
+
+    const totalViews = baseline.reduce((s, v) => s + v.viewCount, 0);
+    const avg = totalViews / baseline.length;
     if (avg <= 0) continue;
 
+    // Score every type-matching video against the chosen baseline.
     for (const v of typedVideos) {
       const pct = (v.viewCount / avg) * 100;
       if (pct >= minPercent) {
-        flagged.push({ ...v, _outlierPercent: pct, _channelAvg: Math.round(avg) });
+        flagged.push({
+          ...v,
+          _outlierPercent: pct,
+          _channelAvg: Math.round(avg),
+          _baselineKind: baselineKind,
+          _baselineCount: baseline.length,
+        });
       }
     }
   }
@@ -831,6 +847,8 @@ export async function getFlaggedVideos(
     channelAvgViewsAtCheck: v._channelAvg,
     outlierPercent: v._outlierPercent,
     flaggedAsOutlier: true,
+    baselineKind: v._baselineKind,
+    baselineCount: v._baselineCount,
   }));
 }
 
