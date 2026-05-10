@@ -54,6 +54,7 @@ export async function checkForUpdates(): Promise<UpdateCheckResult> {
     publishedAt: null,
     assetUrl: null,
     assetSize: null,
+    assetId: null,
     error: null,
   };
 

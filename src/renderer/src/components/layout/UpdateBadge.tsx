@@ -97,7 +97,7 @@ export function UpdateBadge() {
   }
 
   if (!info) return null;
-  const hasUpdate = info.isNewer && info.assetId !== null;
+  const hasUpdate = info.isNewer && typeof info.assetId === 'number';
 
   return (
     <>
@@ -211,7 +211,7 @@ export function UpdateBadge() {
                 ) : allReleases && allReleases.length > 0 ? (
                   <div className="max-h-64 space-y-1 overflow-y-auto">
                     {allReleases.map((r) => {
-                      const downloadable = r.assetId !== null && !r.isCurrent;
+                      const downloadable = typeof r.assetId === 'number' && !r.isCurrent;
                       return (
                         <div
                           key={r.tagName}
@@ -242,7 +242,7 @@ export function UpdateBadge() {
                           <span className="text-[10px] text-zinc-500">
                             {new Date(r.publishedAt).toLocaleDateString('pt-BR')}
                           </span>
-                          {downloadable && r.assetId !== null && (
+                          {downloadable && typeof r.assetId === 'number' && (
                             <button
                               onClick={() => handleInstall(r.assetId!, r.version)}
                               disabled={installing}
@@ -279,7 +279,7 @@ export function UpdateBadge() {
             <Button onClick={() => setOpen(false)} variant="ghost" size="sm" disabled={installing}>
               Fechar
             </Button>
-            {hasUpdate && info.assetId !== null && info.latestVersion && (
+            {hasUpdate && typeof info.assetId === 'number' && info.latestVersion && (
               <>
                 <Button
                   onClick={() => window.api.updates.openUrl(info.releaseUrl!)}
