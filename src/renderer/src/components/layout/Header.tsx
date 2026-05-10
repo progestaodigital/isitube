@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Search, Sun, Moon, Bell, User } from 'lucide-react';
 import { useThemeStore } from '../../stores/theme';
 import { useRouterStore } from '../../stores/router';
+import { UpdateBadge } from './UpdateBadge';
 import type { LicenseInfo } from '@shared/types';
 
 export function Header() {
@@ -27,6 +28,7 @@ export function Header() {
         </div>
       </div>
       <div className="flex items-center gap-1">
+        <UpdateBadge />
         {license && (
           <button
             onClick={() => navigate('settings')}

@@ -235,6 +235,21 @@ const api: IsitubeAPI = {
       ipcRenderer.invoke('backup:github:restore', releaseId),
   },
 
+  updates: {
+    check: (): Promise<{
+      currentVersion: string;
+      latestVersion: string | null;
+      isNewer: boolean;
+      releaseUrl: string | null;
+      releaseNotes: string | null;
+      publishedAt: string | null;
+      assetUrl: string | null;
+      assetSize: number | null;
+      error: string | null;
+    }> => ipcRenderer.invoke('updates:check'),
+    openUrl: (url: string): Promise<void> => ipcRenderer.invoke('updates:open-url', url),
+  },
+
   events: {
     onUpdateRunCompleted: (handler) => {
       const listener = (_e: Electron.IpcRendererEvent, payload: UpdateRunInfo) => handler(payload);

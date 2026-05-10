@@ -10,6 +10,7 @@ import { registerLicenseHandlers } from './license';
 import { registerDialogHandlers } from './dialog';
 import { registerBackupHandlers } from './backup';
 import { registerCategoriesHandlers } from './categories';
+import { registerUpdatesHandlers } from './updates';
 
 export function registerIpcHandlers(): void {
   registerSettingsHandlers();
@@ -24,4 +25,5 @@ export function registerIpcHandlers(): void {
   registerDialogHandlers();
   registerBackupHandlers();
   registerCategoriesHandlers();
+  registerUpdatesHandlers();
 }
