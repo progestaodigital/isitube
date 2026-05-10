@@ -227,6 +227,80 @@ async function ingestAllVideosForChannel(
 }
 
 /**
+ * Backfill all monitored channels in sequence. Returns a per-channel summary
+ * so the UI can show progress and any failures.
+ */
+export async function backfillAllChannels(): Promise<{
+  success: boolean;
+  message: string;
+  results: Array<{
+    channelId: string;
+    channelTitle: string;
+    success: boolean;
+    message: string;
+    ingested: number;
+    skippedDeleted: number;
+  }>;
+}> {
+  if (!(await isYouTubeConfigured())) {
+    return {
+      success: false,
+      message: 'YouTube Data API key não configurada ou inválida.',
+      results: [],
+    };
+  }
+  const channels = await getPrisma().channel.findMany({
+    where: { deletedAt: null, monitored: true },
+    select: { id: true, youtubeId: true, title: true },
+    orderBy: { createdAt: 'asc' },
+  });
+  if (channels.length === 0) {
+    return { success: true, message: 'Nenhum canal cadastrado.', results: [] };
+  }
+
+  const results: Array<{
+    channelId: string;
+    channelTitle: string;
+    success: boolean;
+    message: string;
+    ingested: number;
+    skippedDeleted: number;
+  }> = [];
+
+  let totalIngested = 0;
+  let totalSkipped = 0;
+  let failures = 0;
+
+  for (const channel of channels) {
+    const r = await backfillChannel(channel.id);
+    results.push({
+      channelId: channel.id,
+      channelTitle: channel.title,
+      success: r.success,
+      message: r.message,
+      ingested: r.ingested,
+      skippedDeleted: r.skippedDeleted,
+    });
+    if (r.success) {
+      totalIngested += r.ingested;
+      totalSkipped += r.skippedDeleted;
+    } else {
+      failures += 1;
+    }
+  }
+
+  return {
+    success: failures === 0,
+    message:
+      `${channels.length} canais processados, ${totalIngested} vídeos sincronizados` +
+      (totalSkipped > 0 ? `, ${totalSkipped} excluídos ignorados` : '') +
+      (failures > 0 ? `, ${failures} falharam` : '') +
+      '.',
+    results,
+  };
+}
+
+/**
  * Public backfill: re-runs the full-catalog ingest for an existing channel.
  * Used by the renderer's "Sincronizar histórico completo" button — channels
  * registered before the full-sync change only have the last 30 days of videos.

@@ -1,6 +1,7 @@
 import { ipcMain } from 'electron';
 import {
   addChannel,
+  backfillAllChannels,
   backfillChannel,
   dismissStartupSuggestion,
   getChannelVideos,
@@ -117,6 +118,8 @@ export function registerChannelsHandlers(): void {
     if (typeof channelId !== 'string') throw new Error('channels:backfill expects a string id');
     return backfillChannel(channelId);
   });
+
+  ipcMain.handle('channels:backfill-all', async () => backfillAllChannels());
 
   ipcMain.handle('channels:list-update-runs', async (_event, limit: unknown) => {
     const n = typeof limit === 'number' ? limit : 10;

@@ -2,9 +2,12 @@ import { ipcMain } from 'electron';
 import {
   extractVideoMetadata,
   getVideoDetail,
+  listDeletedVideos,
   listExtractedVideos,
+  purgeVideos,
   removeVideo,
   removeVideos,
+  restoreVideos,
 } from '../services/videos';
 import type { ExtractedVideosFilters, VideoType } from '@shared/types';
 
@@ -44,5 +47,21 @@ export function registerVideosHandlers(): void {
       throw new Error('videos:remove-many expects an array of string ids');
     }
     return removeVideos(ids as string[]);
+  });
+
+  ipcMain.handle('videos:list-deleted', async () => listDeletedVideos());
+
+  ipcMain.handle('videos:restore', async (_event, ids: unknown) => {
+    if (!Array.isArray(ids) || ids.some((id) => typeof id !== 'string')) {
+      throw new Error('videos:restore expects an array of string ids');
+    }
+    return restoreVideos(ids as string[]);
+  });
+
+  ipcMain.handle('videos:purge', async (_event, ids: unknown) => {
+    if (!Array.isArray(ids) || ids.some((id) => typeof id !== 'string')) {
+      throw new Error('videos:purge expects an array of string ids');
+    }
+    return purgeVideos(ids as string[]);
   });
 }

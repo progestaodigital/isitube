@@ -105,6 +105,18 @@ const api: IsitubeAPI = {
       channelId: string
     ): Promise<{ success: boolean; message: string; ingested: number; skippedDeleted: number }> =>
       ipcRenderer.invoke('channels:backfill', channelId),
+    backfillAll: (): Promise<{
+      success: boolean;
+      message: string;
+      results: Array<{
+        channelId: string;
+        channelTitle: string;
+        success: boolean;
+        message: string;
+        ingested: number;
+        skippedDeleted: number;
+      }>;
+    }> => ipcRenderer.invoke('channels:backfill-all'),
     listUpdateRuns: (limit?: number): Promise<UpdateRunInfo[]> =>
       ipcRenderer.invoke('channels:list-update-runs', limit),
     getStartupAction: (): Promise<StartupAction> =>
@@ -164,6 +176,11 @@ const api: IsitubeAPI = {
       ipcRenderer.invoke('videos:remove', videoId),
     removeMany: (videoIds: string[]): Promise<number> =>
       ipcRenderer.invoke('videos:remove-many', videoIds),
+    listDeleted: (): Promise<VideoDetail[]> => ipcRenderer.invoke('videos:list-deleted'),
+    restore: (videoIds: string[]): Promise<number> =>
+      ipcRenderer.invoke('videos:restore', videoIds),
+    purge: (videoIds: string[]): Promise<number> =>
+      ipcRenderer.invoke('videos:purge', videoIds),
   },
 
   transcripts: {

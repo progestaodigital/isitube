@@ -165,6 +165,39 @@ export async function removeVideos(videoIds: string[]): Promise<number> {
   return result.count;
 }
 
+/** Lista vídeos soft-deleted (ainda no DB, deletedAt != null). */
+export async function listDeletedVideos(): Promise<VideoDetail[]> {
+  const videos = await getPrisma().video.findMany({
+    where: { deletedAt: { not: null } },
+    orderBy: { deletedAt: 'desc' },
+    take: 500,
+    include: { channel: { select: { title: true } } },
+  });
+  return videos.map(projectVideoDetail);
+}
+
+/** Restaura vídeos soft-deleted (limpa deletedAt). */
+export async function restoreVideos(videoIds: string[]): Promise<number> {
+  if (videoIds.length === 0) return 0;
+  const result = await getPrisma().video.updateMany({
+    where: { id: { in: videoIds }, deletedAt: { not: null } },
+    data: { deletedAt: null },
+  });
+  return result.count;
+}
+
+/**
+ * Apaga DEFINITIVAMENTE os vídeos selecionados (DELETE no DB, sem volta).
+ * Cascateia em snapshots e relacionamentos via FK.
+ */
+export async function purgeVideos(videoIds: string[]): Promise<number> {
+  if (videoIds.length === 0) return 0;
+  const result = await getPrisma().video.deleteMany({
+    where: { id: { in: videoIds }, deletedAt: { not: null } },
+  });
+  return result.count;
+}
+
 const SHORTS_MAX_DURATION_SEC = 180;
 
 export async function listExtractedVideos(

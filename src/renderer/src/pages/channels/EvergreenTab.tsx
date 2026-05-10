@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Sprout, TrendingUp, Calendar, Eye, Search, Trash2, Info } from 'lucide-react';
 import { Card } from '../../components/ui/Card';
 import { Input } from '../../components/ui/Input';
+import { Button } from '../../components/ui/Button';
+import { Checkbox } from '../../components/ui/Checkbox';
 import { SkeletonListRow } from '../../components/ui/Skeleton';
 import { useVideoDetailStore } from '../../stores/videoDetail';
 import { useToastStore } from '../../stores/toast';
@@ -21,6 +23,7 @@ export function EvergreenTab({ channels, categoryIds = [] }: EvergreenTabProps) 
 
   const [items, setItems] = useState<EvergreenVideo[]>([]);
   const [confirmingDelete, setConfirmingDelete] = useState<string | null>(null);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
   const [readiness, setReadiness] = useState<Readiness | null>(null);
   const [filters, setFilters] = useState<EvergreenFilters>({
     minAgeDays: 30,
@@ -72,6 +75,46 @@ export function EvergreenTab({ channels, categoryIds = [] }: EvergreenTabProps) 
     const off = window.api.events.onUpdateRunCompleted(() => refresh());
     return off;
   }, [refresh]);
+
+  // Drop selections that no longer exist after a refresh.
+  useEffect(() => {
+    setSelected((prev) => {
+      const next = new Set<string>();
+      for (const v of items) if (prev.has(v.id)) next.add(v.id);
+      return next;
+    });
+  }, [items]);
+
+  function toggleSelect(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleAll() {
+    if (selected.size === items.length) setSelected(new Set());
+    else setSelected(new Set(items.map((v) => v.id)));
+  }
+
+  async function handleBulkDelete() {
+    const ids = Array.from(selected);
+    if (ids.length === 0) return;
+    const ok = window.confirm(
+      `Excluir ${ids.length} vídeo${ids.length > 1 ? 's' : ''} do monitoramento?\n\n` +
+        `Esses vídeos vão sumir das listas e não serão mais snapshotados.`
+    );
+    if (!ok) return;
+    const removed = await window.api.videos.removeMany(ids);
+    setItems((items) => items.filter((it) => !ids.includes(it.id)));
+    setSelected(new Set());
+    showToast({
+      kind: 'success',
+      title: `${removed} vídeo${removed > 1 ? 's' : ''} removido${removed > 1 ? 's' : ''}`,
+    });
+  }
 
   return (
     <div className="space-y-4">
@@ -235,9 +278,32 @@ export function EvergreenTab({ channels, categoryIds = [] }: EvergreenTabProps) 
           </p>
         </Card>
       ) : (
-        <div className="space-y-2">
+        <>
+          <div className="flex items-center justify-between rounded-lg border border-zinc-200 bg-zinc-50 px-4 py-2 dark:border-zinc-800 dark:bg-zinc-900/40">
+            <label className="flex cursor-pointer items-center gap-3">
+              <Checkbox
+                checked={items.length > 0 && selected.size === items.length}
+                indeterminate={selected.size > 0 && selected.size < items.length}
+                onChange={toggleAll}
+                ariaLabel="Selecionar todos os evergreens"
+              />
+              <span className="text-xs text-zinc-600 dark:text-zinc-400">
+                {selected.size > 0
+                  ? `${selected.size} de ${items.length} selecionado${selected.size > 1 ? 's' : ''}`
+                  : `${items.length} vídeo${items.length > 1 ? 's' : ''} · selecionar todos`}
+              </span>
+            </label>
+            {selected.size > 0 && (
+              <Button onClick={handleBulkDelete} variant="primary" size="sm">
+                <Trash2 className="h-4 w-4" />
+                Excluir {selected.size}
+              </Button>
+            )}
+          </div>
+          <div className="space-y-2">
           {items.map((v, idx) => {
             const isConfirming = confirmingDelete === v.id;
+            const isSel = selected.has(v.id);
             async function handleDelete(e: React.MouseEvent) {
               e.stopPropagation();
               if (!isConfirming) {
@@ -255,8 +321,18 @@ export function EvergreenTab({ channels, categoryIds = [] }: EvergreenTabProps) 
             return (
               <div
                 key={v.id}
-                className="group flex w-full gap-3 rounded-xl border border-zinc-200 bg-white p-3 text-left transition-colors hover:border-zinc-300 dark:border-zinc-800 dark:bg-zinc-900 dark:hover:border-zinc-700"
+                className={cn(
+                  'group flex w-full gap-3 rounded-xl border border-zinc-200 bg-white p-3 text-left transition-colors hover:border-zinc-300 dark:border-zinc-800 dark:bg-zinc-900 dark:hover:border-zinc-700',
+                  isSel && 'ring-2 ring-red-500/40'
+                )}
               >
+                <div className="pt-1">
+                  <Checkbox
+                    checked={isSel}
+                    onChange={() => toggleSelect(v.id)}
+                    ariaLabel={`Selecionar ${v.title}`}
+                  />
+                </div>
                 <button
                   onClick={() => openDetail(v.id)}
                   className="flex flex-1 gap-3 text-left"
@@ -345,7 +421,8 @@ export function EvergreenTab({ channels, categoryIds = [] }: EvergreenTabProps) 
               </div>
             );
           })}
-        </div>
+          </div>
+        </>
       )}
     </div>
   );

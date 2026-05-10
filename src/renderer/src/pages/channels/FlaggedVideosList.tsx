@@ -1,6 +1,8 @@
+import { useEffect, useState } from 'react';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
-import { Flame, Download } from 'lucide-react';
+import { Checkbox } from '../../components/ui/Checkbox';
+import { Flame, Download, Trash2 } from 'lucide-react';
 import { VideoCard } from './VideoCard';
 import { exportCsv } from '../../lib/exportCsv';
 import type { ChannelInfo, FlaggedVideosFilters, VideoInfo } from '@shared/types';
@@ -11,6 +13,7 @@ interface FlaggedVideosListProps {
   filters: FlaggedVideosFilters;
   onFilterChange: (next: FlaggedVideosFilters) => void;
   onDeleteVideo?: (videoId: string) => void;
+  onBulkDelete?: (videoIds: string[]) => Promise<void> | void;
 }
 
 export function FlaggedVideosList({
@@ -19,7 +22,50 @@ export function FlaggedVideosList({
   filters,
   onFilterChange,
   onDeleteVideo,
+  onBulkDelete,
 }: FlaggedVideosListProps) {
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+
+  // Drop selections that no longer exist (after deletion or filter change).
+  useEffect(() => {
+    setSelected((prev) => {
+      const next = new Set<string>();
+      for (const v of videos) if (prev.has(v.id)) next.add(v.id);
+      return next;
+    });
+  }, [videos]);
+
+  function toggle(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleAll() {
+    if (selected.size === videos.length) {
+      setSelected(new Set());
+    } else {
+      setSelected(new Set(videos.map((v) => v.id)));
+    }
+  }
+
+  async function handleBulkDelete() {
+    const ids = Array.from(selected);
+    if (ids.length === 0 || !onBulkDelete) return;
+    const ok = window.confirm(
+      `Excluir ${ids.length} vídeo${ids.length > 1 ? 's' : ''} do monitoramento?\n\n` +
+        `Esses vídeos vão sumir das listas e não serão mais snapshotados nas próximas atualizações.`
+    );
+    if (!ok) return;
+    await onBulkDelete(ids);
+    setSelected(new Set());
+  }
+
+  const allSelected = videos.length > 0 && selected.size === videos.length;
+  const someSelected = selected.size > 0 && !allSelected;
   return (
     <div className="space-y-4">
       <Card className="p-3">
@@ -127,17 +173,57 @@ export function FlaggedVideosList({
           </p>
         </Card>
       ) : (
-        <div className="space-y-2">
-          {videos.map((v) => (
-            <VideoCard
-              key={v.id}
-              video={v}
-              onDelete={onDeleteVideo}
-              windowDays={filters.sinceDays ?? 30}
-              videoType={filters.videoType ?? 'all'}
-            />
-          ))}
-        </div>
+        <>
+          {onBulkDelete && (
+            <div className="flex items-center justify-between rounded-lg border border-zinc-200 bg-zinc-50 px-4 py-2 dark:border-zinc-800 dark:bg-zinc-900/40">
+              <label className="flex cursor-pointer items-center gap-3">
+                <Checkbox
+                  checked={allSelected}
+                  indeterminate={someSelected}
+                  onChange={toggleAll}
+                  ariaLabel="Selecionar todos os vídeos"
+                />
+                <span className="text-xs text-zinc-600 dark:text-zinc-400">
+                  {selected.size > 0
+                    ? `${selected.size} de ${videos.length} selecionado${selected.size > 1 ? 's' : ''}`
+                    : `${videos.length} vídeo${videos.length > 1 ? 's' : ''} · selecionar todos`}
+                </span>
+              </label>
+              {selected.size > 0 && (
+                <Button onClick={handleBulkDelete} variant="primary" size="sm">
+                  <Trash2 className="h-4 w-4" />
+                  Excluir {selected.size}
+                </Button>
+              )}
+            </div>
+          )}
+          <div className="space-y-2">
+            {videos.map((v) => {
+              const isSel = selected.has(v.id);
+              return (
+                <div key={v.id} className="flex items-start gap-3">
+                  {onBulkDelete && (
+                    <div className="pt-4">
+                      <Checkbox
+                        checked={isSel}
+                        onChange={() => toggle(v.id)}
+                        ariaLabel={`Selecionar ${v.title}`}
+                      />
+                    </div>
+                  )}
+                  <div className={`min-w-0 flex-1 ${isSel ? 'ring-2 ring-red-500/40 rounded-xl' : ''}`}>
+                    <VideoCard
+                      video={v}
+                      onDelete={onDeleteVideo}
+                      windowDays={filters.sinceDays ?? 30}
+                      videoType={filters.videoType ?? 'all'}
+                    />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </>
       )}
     </div>
   );

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Plus, RefreshCw, CalendarClock } from 'lucide-react';
+import { Plus, RefreshCw, CalendarClock, History, Trash2 } from 'lucide-react';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { MissingKeyCTA } from '../components/ui/MissingKeyCTA';
@@ -12,6 +12,7 @@ import { ChannelList } from './channels/ChannelList';
 import { FlaggedVideosList } from './channels/FlaggedVideosList';
 import { AddChannelDialog } from './channels/AddChannelDialog';
 import { EditChannelCategoriesDialog } from './channels/EditChannelCategoriesDialog';
+import { TrashDialog } from './channels/TrashDialog';
 import { SchedulePicker } from './channels/SchedulePicker';
 import { AnalyticsTab } from './channels/AnalyticsTab';
 import { EvergreenTab } from './channels/EvergreenTab';
@@ -42,10 +43,12 @@ export function ChannelsPage() {
   const [latestRun, setLatestRun] = useState<UpdateRunInfo | null>(null);
   const [schedule, setSchedule] = useState<ScheduleInfo | null>(null);
   const [updating, setUpdating] = useState(false);
+  const [backfillingAll, setBackfillingAll] = useState(false);
   const [removing, setRemoving] = useState<Set<string>>(new Set());
   const [addOpen, setAddOpen] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [editingChannel, setEditingChannel] = useState<ChannelInfo | null>(null);
+  const [trashOpen, setTrashOpen] = useState(false);
 
   const refreshChannels = useCallback(async () => {
     setChannels(await window.api.channels.list());
@@ -154,6 +157,15 @@ export function ChannelsPage() {
     showToast({ kind: 'info', title: 'Vídeo removido do monitoramento' });
   }
 
+  async function handleBulkDeleteVideos(videoIds: string[]) {
+    const removed = await window.api.videos.removeMany(videoIds);
+    setFlagged((vs) => vs.filter((v) => !videoIds.includes(v.id)));
+    showToast({
+      kind: 'success',
+      title: `${removed} vídeo${removed > 1 ? 's' : ''} removido${removed > 1 ? 's' : ''} do monitoramento`,
+    });
+  }
+
   async function handleBackfillChannel(channelId: string) {
     showToast({
       kind: 'info',
@@ -166,6 +178,42 @@ export function ChannelsPage() {
       await Promise.all([refreshChannels(), refreshFlagged()]);
     } else {
       showToast({ kind: 'error', title: 'Falha', description: result.message });
+    }
+  }
+
+  async function handleBackfillAll() {
+    if (backfillingAll) return;
+    const ok = window.confirm(
+      `Sincronizar histórico completo de ${channels.length} canal${channels.length > 1 ? 'is' : ''}?\n\n` +
+        `Vai puxar TODOS os vídeos da playlist de uploads de cada canal. ` +
+        `Pode demorar alguns minutos dependendo do tamanho dos catálogos. ` +
+        `Quota usada: ~1 unidade por 50 vídeos por canal.`
+    );
+    if (!ok) return;
+    setBackfillingAll(true);
+    showToast({
+      kind: 'info',
+      title: 'Sincronizando histórico de todos os canais…',
+      description: 'Aguarde — pode demorar.',
+    });
+    try {
+      const result = await window.api.channels.backfillAll();
+      if (result.success) {
+        showToast({
+          kind: 'success',
+          title: 'Backfill global concluído',
+          description: result.message,
+        });
+      } else {
+        showToast({
+          kind: 'error',
+          title: 'Backfill global parcial ou falhou',
+          description: result.message,
+        });
+      }
+      await Promise.all([refreshChannels(), refreshFlagged()]);
+    } finally {
+      setBackfillingAll(false);
     }
   }
 
@@ -209,6 +257,27 @@ export function ChannelsPage() {
         >
           <RefreshCw className={cn('h-4 w-4', updating && 'animate-spin')} />
           {updating ? 'Atualizando...' : 'Atualizar agora'}
+        </Button>
+
+        <Button
+          onClick={handleBackfillAll}
+          disabled={backfillingAll || channels.length === 0 || !youtubeReady}
+          variant="secondary"
+          size="sm"
+          title="Sincronizar histórico completo de todos os canais (puxa todos os vídeos da playlist de uploads). Útil pra canais cadastrados antes do full-sync."
+        >
+          <History className={cn('h-4 w-4', backfillingAll && 'animate-spin')} />
+          {backfillingAll ? 'Sincronizando…' : 'Sincronizar tudo'}
+        </Button>
+
+        <Button
+          onClick={() => setTrashOpen(true)}
+          variant="ghost"
+          size="sm"
+          title="Ver vídeos excluídos do monitoramento. Pode restaurar ou apagar permanentemente."
+        >
+          <Trash2 className="h-4 w-4" />
+          Lixeira
         </Button>
 
         <div className="flex flex-1 flex-wrap items-center gap-x-6 gap-y-1 text-xs text-zinc-600 dark:text-zinc-400">
@@ -278,6 +347,7 @@ export function ChannelsPage() {
           filters={filters}
           onFilterChange={setFilters}
           onDeleteVideo={handleDeleteVideo}
+          onBulkDelete={handleBulkDeleteVideos}
         />
       )}
       {tab === 'channels' && (
@@ -325,6 +395,15 @@ export function ChannelsPage() {
         onScheduled={() => {
           refreshSchedule();
           showToast({ kind: 'success', title: 'Agendamento criado' });
+        }}
+      />
+
+      <TrashDialog
+        open={trashOpen}
+        onClose={() => setTrashOpen(false)}
+        onChange={() => {
+          refreshFlagged();
+          refreshChannels();
         }}
       />
     </div>
