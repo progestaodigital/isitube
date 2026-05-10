@@ -736,7 +736,7 @@ function projectUpdateRun(run: {
 // =============================================================================
 
 /**
- * Outlier detection — VIEWS/DIA + MEDIAN baseline edition.
+ * Outlier detection — VIEWS/DIA + MEAN baseline (filtered) edition.
  *
  * Mental model: "destaque" = vídeo cuja velocidade de views/dia ultrapassa
  * por X% a velocidade típica do canal nos últimos 30 dias.
@@ -745,13 +745,17 @@ function projectUpdateRun(run: {
  * incomparáveis. 30k em 3 dias e 30k em 100 dias performam radicalmente
  * diferente. Normalizar por idade neutraliza isso.
  *
- * Why median (not mean): canais têm muitos vídeos com tração próxima de zero
- * (long tail) E ocasionais virais. Média sofre dos dois lados; mediana é
- * resistente a ambos. Mas mediana sozinha colapsa pra 0 quando 50%+ é zero —
- * por isso filtramos os mortos (< 1 view/dia) antes de medianar.
+ * Why mean (not median): tentamos mediana antes — gerava discrepâncias muito
+ * grandes nos cards (% acima da baseline ficava extremo demais visualmente).
+ * Mean dos ativos suaviza as comparações, à custa de virais inflarem um pouco
+ * a baseline. Trade-off aceito.
  *
  * Why fixed 30-day baseline (not user's filter window): canais low-frequency
  * (1 vídeo/semana) não teriam baseline confiável em janelas curtas.
+ *
+ * Why filter dead ones (< 1 view/dia): canais têm long tail de vídeos sem
+ * tração que arrastam a média pra baixo. Filtrar evita que qualquer vídeo
+ * minimamente ativo vire outlier.
  *
  * Per-channel scoping mantido (canal pequeno tem destaques).
  */
@@ -809,7 +813,7 @@ export async function getFlaggedVideos(
 
   // 3) Mediana per channel (com fallback type → mixed).
   type ChannelBaseline = {
-    median: number;
+    avg: number;
     kind: 'type' | 'mixed';
     count: number;
   };
@@ -839,10 +843,11 @@ export async function getFlaggedVideos(
       kind = 'mixed';
     }
 
-    const med = median(pool.map((x) => x.vpd));
-    if (med <= 0) continue;
+    const sumVpd = pool.reduce((s, x) => s + x.vpd, 0);
+    const avg = sumVpd / pool.length;
+    if (avg <= 0) continue;
 
-    computedBaseline.set(channelId, { median: med, kind, count: pool.length });
+    computedBaseline.set(channelId, { avg, kind, count: pool.length });
   }
 
   // 4) Score do display pool contra a mediana do canal.
@@ -863,12 +868,12 @@ export async function getFlaggedVideos(
     const vpd = viewsPerDay(v);
     if (vpd <= 0) continue;
 
-    const pct = (vpd / baseline.median) * 100;
+    const pct = (vpd / baseline.avg) * 100;
     if (pct >= minPercent) {
       flagged.push({
         ...v,
         _outlierPercent: pct,
-        _channelAvg: Math.round(baseline.median),
+        _channelAvg: Math.round(baseline.avg),
         _baselineKind: baseline.kind,
         _baselineCount: baseline.count,
         _viewsPerDay: Math.round(vpd),
@@ -890,7 +895,7 @@ export async function getFlaggedVideos(
     commentCount: v.commentCount,
     durationSec: v.durationSec,
     publishedAt: v.publishedAt.toISOString(),
-    channelAvgViewsAtCheck: v._channelAvg, // agora é mediana de views/dia
+    channelAvgViewsAtCheck: v._channelAvg, // média de views/dia entre vídeos ativos
     outlierPercent: v._outlierPercent,
     flaggedAsOutlier: true,
     baselineKind: v._baselineKind,

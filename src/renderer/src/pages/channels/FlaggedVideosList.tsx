@@ -110,10 +110,11 @@ export function FlaggedVideosList({
         </div>
         <p className="mt-2 text-[11px] text-zinc-500">
           Cada vídeo é comparado pela velocidade <b>views/dia</b>. A baseline é a{' '}
-          <b>mediana de views/dia</b> dos vídeos ativos (≥ 1 view/dia) do canal nos{' '}
+          <b>média de views/dia</b> dos vídeos ativos (≥ 1 view/dia) do canal nos{' '}
           <b>últimos 30 dias</b> (sempre 30d, independente do filtro de período).
-          Mediana resiste a virais e zerados; views/dia neutraliza vídeos de idades
-          diferentes. O período só restringe quais vídeos aparecem na lista.
+          Filtrar zeros evita que vídeos parados arrastem a média; views/dia
+          neutraliza idades diferentes. O período só restringe quais vídeos aparecem
+          na lista.
         </p>
       </Card>
 
