@@ -31,6 +31,63 @@ const STOPWORDS = new Set([
   '2020', '2021', '2022', '2023', '2024', '2025', '2026', '2027',
 ]);
 
+/**
+ * Verbos auxiliares e modais que, quando aparecem no INÍCIO de um n-gram,
+ * indicam que o n-gram é um fragmento de frase ("am selling", "is going",
+ * "tem que"), não uma keyword pesquisável.
+ */
+const FRAGMENT_STARTERS = new Set([
+  // English
+  'am', 'is', 'are', 'was', 'were', 'be', 'been', 'being',
+  'have', 'has', 'had', 'having',
+  'do', 'does', 'did', 'doing', 'done',
+  'can', 'could', 'will', 'would', 'should', 'must', 'may', 'might',
+  'get', 'got', 'getting', 'gets',
+  'make', 'makes', 'made', 'making',
+  'go', 'goes', 'going', 'went',
+  'come', 'comes', 'coming', 'came',
+  'want', 'wants', 'wanted', 'need', 'needs', 'needed',
+  'feel', 'feels', 'felt', 'think', 'thinks', 'thought',
+  'see', 'sees', 'saw', 'know', 'knows', 'knew',
+  'just', 'really', 'actually', 'simply', 'finally',
+  // pt-BR
+  'estou', 'está', 'estão', 'estamos', 'estava', 'estavam',
+  'tenho', 'tinha', 'temos', 'tínhamos',
+  'fiz', 'faz', 'faço', 'fazem', 'fazendo',
+  'vou', 'vamos', 'foi', 'fui',
+  'quero', 'queria', 'querem', 'queremos',
+  'sei', 'sabia', 'sabemos',
+  'posso', 'pode', 'podemos', 'podia',
+  'devo', 'deve', 'devemos',
+  'gosto', 'gosta', 'gostam',
+  'preciso', 'precisa', 'precisam',
+]);
+
+/**
+ * Palavras genéricas demais pra serem keywords úteis no fim de um n-gram.
+ * "wrong thing", "my way" — terminar nessas palavras quase sempre é um
+ * fragmento de frase, não uma keyword com intenção de busca.
+ */
+const GENERIC_TAILS = new Set([
+  // English
+  'thing', 'things', 'way', 'ways', 'day', 'days', 'time', 'times',
+  'people', 'person', 'man', 'woman', 'guy', 'guys', 'kid', 'kids',
+  'today', 'tomorrow', 'yesterday', 'now', 'later',
+  'good', 'bad', 'best', 'worst', 'better', 'worse',
+  'big', 'small', 'right', 'wrong', 'real', 'fake',
+  'one', 'two', 'three', 'first', 'last',
+  'video', 'videos', 'channel', 'content',
+  // pt-BR
+  'coisa', 'coisas', 'jeito', 'jeitos', 'forma', 'formas',
+  'dia', 'dias', 'tempo', 'tempos', 'hora', 'horas',
+  'gente', 'pessoa', 'pessoas', 'cara', 'caras',
+  'hoje', 'amanhã', 'ontem',
+  'bom', 'ruim', 'melhor', 'pior',
+  'grande', 'pequeno', 'certo', 'errado',
+  'um', 'dois', 'três', 'primeiro', 'último',
+  'vídeo', 'vídeos', 'canal', 'conteúdo',
+]);
+
 const SHORTS_MAX_DURATION_SEC = 180;
 const DEFAULT_TOP_N = 30;
 const DEFAULT_EVERGREEN_LOOKBACK_DAYS = 30;
@@ -142,7 +199,9 @@ function extractAndRank(videos: DbVideo[]): KeywordSuggestion[] {
     const isShort =
       v.durationSec !== null && v.durationSec > 0 && v.durationSec <= SHORTS_MAX_DURATION_SEC;
 
-    // Tags first — they're curated by the creator, most reliable signal
+    // Tags first — they're curated by the creator, most reliable signal.
+    // Tags can be 1 word ("anthropic") because the creator chose them; we
+    // don't aplicar o filtro de fragmento aqui.
     let tags: string[] = [];
     if (v.tags) {
       try {
@@ -154,19 +213,20 @@ function extractAndRank(videos: DbVideo[]): KeywordSuggestion[] {
     }
     for (const tag of tags) {
       const normalized = normalize(tag);
-      if (!isUsefulTerm(normalized)) continue;
+      if (!isUsefulTag(normalized)) continue;
       addOccurrence(map, normalized, 'tag', v, isShort);
     }
 
-    // N-grams from title (1-3 words)
-    const titleNgrams = extractNgrams(v.title, [1, 2, 3]);
+    // N-grams from title (2-3 words only — single words são quase sempre
+    // genéricas/inúteis como keyword pesquisável).
+    const titleNgrams = extractNgrams(v.title, [2, 3]);
     for (const gram of titleNgrams) {
-      if (!isUsefulTerm(gram)) continue;
+      if (!isUsefulNgram(gram)) continue;
       addOccurrence(map, gram, 'title', v, isShort);
     }
   }
 
-  // Convert to array and rank
+  // Convert to array
   const suggestions: KeywordSuggestion[] = Array.from(map.values()).map((s) => ({
     term: s.term,
     source: s.source,
@@ -177,16 +237,24 @@ function extractAndRank(videos: DbVideo[]): KeywordSuggestion[] {
     longCount: s.long,
   }));
 
-  // Rank: occurrences first (more videos = stronger signal), totalViews as tiebreaker
-  suggestions.sort((a, b) => {
-    if (b.occurrences !== a.occurrences) return b.occurrences - a.occurrences;
+  // Filter:
+  //   - tag: precisa estar em ≥ 2 vídeos OU ter views totais ≥ 10k
+  //   - title n-gram: precisa estar em ≥ 3 vídeos (mais rigoroso, é ruidoso)
+  const filtered = suggestions.filter((s) => {
+    if (s.source === 'tag') return s.occurrences >= 2 || s.totalViews >= 10_000;
+    return s.occurrences >= 3;
+  });
+
+  // Rank: tags primeiro (peso 2x nas occurrences), depois ngrams.
+  // Dentro de cada grupo, occurrences > totalViews.
+  filtered.sort((a, b) => {
+    const aWeight = a.source === 'tag' ? a.occurrences * 2 : a.occurrences;
+    const bWeight = b.source === 'tag' ? b.occurrences * 2 : b.occurrences;
+    if (bWeight !== aWeight) return bWeight - aWeight;
     return b.totalViews - a.totalViews;
   });
 
-  // Filter out singletons unless they're very-high view (>10k)
-  return suggestions
-    .filter((s) => s.occurrences >= 2 || s.totalViews >= 10_000)
-    .slice(0, DEFAULT_TOP_N);
+  return filtered.slice(0, DEFAULT_TOP_N);
 }
 
 function addOccurrence(
@@ -233,14 +301,35 @@ function normalize(s: string): string {
     .trim();
 }
 
-function isUsefulTerm(term: string): boolean {
+/**
+ * Tag vinda direto do criador. Mais permissivo: aceita 1-grams e termos
+ * compostos. Só rejeita basicão (vazio, número puro, comprimento extremo).
+ */
+function isUsefulTag(term: string): boolean {
   if (!term || term.length < 3) return false;
   if (term.length > 60) return false;
-  if (/^\d+$/.test(term)) return false; // pure numbers
-  // Reject if every word is a stopword
+  if (/^\d+$/.test(term)) return false;
   const words = term.split(/\s+/);
-  const allStop = words.every((w) => STOPWORDS.has(w));
-  return !allStop;
+  if (words.every((w) => STOPWORDS.has(w))) return false;
+  return true;
+}
+
+/**
+ * N-gram extraído de título. MUITO mais rigoroso que tag — títulos viram
+ * fragmentos de frase com facilidade. Exige multi-palavra, sem starter de
+ * fragmento e sem terminação genérica.
+ */
+function isUsefulNgram(term: string): boolean {
+  if (!term || term.length < 4) return false;
+  if (term.length > 60) return false;
+  const words = term.split(/\s+/);
+  if (words.length < 2) return false; // 1-grams sempre fora
+  if (words.every((w) => STOPWORDS.has(w))) return false;
+  // Primeira palavra é verbo auxiliar / modal / advérbio comum → fragmento
+  if (FRAGMENT_STARTERS.has(words[0]!)) return false;
+  // Última palavra é genérica → fim de frase, não keyword
+  if (GENERIC_TAILS.has(words[words.length - 1]!)) return false;
+  return true;
 }
 
 function extractNgrams(text: string, sizes: number[]): string[] {
