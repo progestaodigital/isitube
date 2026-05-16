@@ -208,6 +208,8 @@ const api: IsitubeAPI = {
   license: {
     get: (forceRefresh?: boolean): Promise<LicenseInfo> =>
       ipcRenderer.invoke('license:get', forceRefresh ?? false),
+    set: (key: string): Promise<LicenseInfo> => ipcRenderer.invoke('license:set', key),
+    clear: (): Promise<void> => ipcRenderer.invoke('license:clear'),
   },
 
   quota: {

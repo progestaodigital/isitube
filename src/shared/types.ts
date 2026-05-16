@@ -285,14 +285,55 @@ export type TranscriptExportResult = {
 
 export type LicensePlan = 'pro' | 'iniciante';
 
+export type LicenseSlug = 'isitube' | 'isitubepro';
+
+/**
+ * Discriminator of license state. The renderer drives gate-modal UX off this
+ * field; `valid: true` is convenience equivalent to `status === 'valid'`.
+ *
+ * - `valid`: license active, app fully unlocked
+ * - `invalid`: chave não bate em nenhum produto (after both slugs tried)
+ * - `hwid_mismatch`: chave + slug ok, máquina diferente da que bindou
+ * - `expired`: licença ativa mas data de expiração passou
+ * - `blocked`: admin bloqueou no painel
+ * - `no_key`: nenhuma licença cadastrada (1ª execução)
+ * - `expired_offline`: sem internet há mais que `grace_until`
+ * - `network_error`: validate falhou por rede; cliente cai pro cache se houver
+ * - `rate_limited`: 429 do painel; cliente cai pro cache se houver
+ */
+export type LicenseStatus =
+  | 'valid'
+  | 'invalid'
+  | 'hwid_mismatch'
+  | 'expired'
+  | 'blocked'
+  | 'no_key'
+  | 'expired_offline'
+  | 'network_error'
+  | 'rate_limited';
+
 export type LicenseInfo = {
   valid: boolean;
+  status: LicenseStatus;
   plan: LicensePlan;
   planLabel: string;
+  /** Source slug at the panel; null when status='no_key'. */
+  slug: LicenseSlug | null;
   expiresAt: string | null;
+  /** ISO; license is usable offline until this moment. */
+  graceUntil: string | null;
+  subscriptionUrl: string | null;
+  supportUrl: string | null;
   lastValidatedAt: string | null;
+  /** Whether this came from the stub provider (dev only). False in production. */
   isStub: boolean;
   reason: string | null;
+};
+
+export type LicenseActionResult = {
+  success: boolean;
+  message: string;
+  info: LicenseInfo;
 };
 
 // =============================================================================
@@ -473,6 +514,8 @@ export type IsitubeAPI = {
   };
   license: {
     get: (forceRefresh?: boolean) => Promise<LicenseInfo>;
+    set: (licenseKey: string) => Promise<LicenseInfo>;
+    clear: () => Promise<void>;
   };
   quota: {
     /** Latest cached quota snapshots (one per API; absent until first proxy call). */

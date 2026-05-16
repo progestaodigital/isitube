@@ -1,6 +1,7 @@
 import { getPrisma } from '../../db';
 import { getSetting, setSetting } from '../settings';
 import { getCredentialPlainText, getCredentialStatus } from '../credentials';
+import { getActivePlan } from '../license';
 import { enrichKeyword, type Providers, type SourceEnabledMap } from './enricher';
 import { findFreshCachedSearch, persistSearch } from './cache';
 import { autocomplete } from './autocomplete';
@@ -59,10 +60,16 @@ export async function setSourceEnabled(
 }
 
 async function buildSourceEnabledMap(): Promise<SourceEnabledMap> {
-  const statuses = await getSourceStatuses();
+  const [statuses, plan] = await Promise.all([getSourceStatuses(), getActivePlan()]);
+  // Keywords Everywhere is Pro-BYOK only (no proxy in V1, by panel decision).
+  // Force the source disabled on Iniciante regardless of user toggle, so the
+  // score recomputes cleanly from scraping + trends only. The UI hides the
+  // KE toggle in iniciante to keep the user from being confused by a setting
+  // that has no effect.
+  const keEnabled = plan === 'iniciante' ? false : statuses.keywordsEverywhere.enabled;
   return {
     scraping: statuses.scraping.enabled,
-    keywordsEverywhere: statuses.keywordsEverywhere.enabled,
+    keywordsEverywhere: keEnabled,
     trends: statuses.trends.enabled,
   };
 }

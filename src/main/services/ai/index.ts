@@ -4,28 +4,50 @@ import { AnthropicProvider } from './providers/anthropic';
 import type { AIProvider } from './providers/types';
 import { getCredentialPlainText, listCredentialStatuses } from '../credentials';
 import { getSetting } from '../settings';
+import { getActiveLicenseKey, getActivePlan } from '../license';
+import { ANTHROPIC_PROXY_BASE_URL } from '../external/endpoints';
 
 const MODEL_SETTING_KEY = 'ai.model';
 
+// Plano Iniciante is restricted server-side to Haiku 4.5; the proxy rejects
+// other models with 403 `model_not_allowed`. We force-pin the client to a
+// Haiku variant so the user's configured model preference (which may be
+// Sonnet or Opus on the Pro tier) doesn't blow up after a Pro→Iniciante
+// downgrade. Matches the regex `^claude-haiku-4-5` the proxy enforces.
+const INICIANTE_FORCED_MODEL = 'claude-haiku-4-5-20251001';
+
 /**
- * Selects the active provider per request. If the user has a valid Anthropic
- * credential we use the real provider with their configured model; otherwise
- * we return null and the IPC handler turns that into a clear "configure your
- * key" error for the renderer.
+ * Selects the active provider per request based on the current license plan:
  *
- * Per Phase 7 product decision (Option A): no automatic mock fallback when
- * the credential is missing/invalid.
+ *   - Plano Iniciante  → AnthropicProvider in `proxy` mode (license_key auth,
+ *                        forced to Haiku 4.5, quota enforced server-side).
+ *   - Plano Pro / BYOK → AnthropicProvider in `direct` mode using the user's
+ *                        own Anthropic key + their model choice.
+ *
+ * Returns null when there's no usable provider (no valid license, or pro
+ * tier without an anthropic credential cadastrated). The IPC handler turns
+ * that into a "configure sua chave / verifique a licença" error in the UI.
  */
 async function selectProvider(): Promise<AIProvider | null> {
+  const plan = await getActivePlan();
+  if (!plan) return null;
+
+  if (plan === 'iniciante') {
+    const licenseKey = await getActiveLicenseKey();
+    if (!licenseKey) return null;
+    return new AnthropicProvider(
+      { mode: 'proxy', licenseKey, baseUrl: ANTHROPIC_PROXY_BASE_URL },
+      INICIANTE_FORCED_MODEL
+    );
+  }
+
+  // Pro / BYOK
   const statuses = await listCredentialStatuses();
   const anthropic = statuses.find((s) => s.provider === 'anthropic');
-
   if (anthropic && anthropic.status === 'valid' && anthropic.hasValue) {
     const apiKey = await getCredentialPlainText('anthropic');
     if (apiKey) {
       const model = (await getSetting(MODEL_SETTING_KEY)) || undefined;
-      // Plano Pro / BYOK path. Plano Iniciante (proxy) is wired in 9.A.2 once
-      // the IsiPanelLicenseProvider lands and the selector gains plan awareness.
       return new AnthropicProvider({ mode: 'direct', apiKey }, model);
     }
   }

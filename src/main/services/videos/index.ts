@@ -3,6 +3,8 @@ import { YouTubeMockMetadataProvider } from './providers/youtube-mock';
 import { YouTubeRealMetadataProvider } from './providers/youtube-real';
 import type { VideoMetadataProvider } from './providers/types';
 import { getCredentialPlainText, getCredentialStatus } from '../credentials';
+import { getActiveLicenseKey, getActivePlan } from '../license';
+import { YOUTUBE_PROXY_BASE_URL } from '../external/endpoints';
 import type {
   ExtractedVideosFilters,
   VideoDetail,
@@ -10,10 +12,24 @@ import type {
 } from '@shared/types';
 
 async function getProvider(): Promise<VideoMetadataProvider> {
+  const plan = await getActivePlan();
+
+  if (plan === 'iniciante') {
+    const licenseKey = await getActiveLicenseKey();
+    if (licenseKey) {
+      return new YouTubeRealMetadataProvider({
+        mode: 'proxy',
+        licenseKey,
+        baseUrl: YOUTUBE_PROXY_BASE_URL,
+      });
+    }
+    return new YouTubeMockMetadataProvider();
+  }
+
+  // Pro / BYOK
   const status = await getCredentialStatus('youtube');
   if (status?.status === 'valid' && status.hasValue) {
     const key = await getCredentialPlainText('youtube');
-    // Plano Pro / BYOK path. Plano Iniciante (proxy) wires in 9.A.2.
     if (key) return new YouTubeRealMetadataProvider({ mode: 'direct', apiKey: key });
   }
   return new YouTubeMockMetadataProvider();

@@ -5,6 +5,8 @@ import { YouTubeRealProvider } from './providers/youtube-real';
 import type { ChannelProvider } from './providers/types';
 import { getCredentialPlainText, getCredentialStatus } from '../credentials';
 import { setChannelCategories } from '../categories';
+import { getActiveLicenseKey, getActivePlan } from '../license';
+import { YOUTUBE_PROXY_BASE_URL } from '../external/endpoints';
 import type {
   AddChannelResult,
   ChannelInfo,
@@ -24,10 +26,26 @@ import type {
  *     user toward configuring a real key (Option A from Phase 8 plan).
  */
 async function getProvider(): Promise<ChannelProvider> {
+  const plan = await getActivePlan();
+
+  if (plan === 'iniciante') {
+    const licenseKey = await getActiveLicenseKey();
+    if (licenseKey) {
+      return new YouTubeRealProvider({
+        mode: 'proxy',
+        licenseKey,
+        baseUrl: YOUTUBE_PROXY_BASE_URL,
+      });
+    }
+    // Iniciante without a usable license key falls through to mock so the
+    // UI doesn't crash; the gate modal should prevent this in practice.
+    return new YouTubeMockProvider();
+  }
+
+  // Pro / BYOK — or no plan (mock fallback so dev/tests keep working).
   const status = await getCredentialStatus('youtube');
   if (status?.status === 'valid' && status.hasValue) {
     const key = await getCredentialPlainText('youtube');
-    // Plano Pro / BYOK path. Plano Iniciante (proxy) wires in 9.A.2.
     if (key) return new YouTubeRealProvider({ mode: 'direct', apiKey: key });
   }
   return new YouTubeMockProvider();

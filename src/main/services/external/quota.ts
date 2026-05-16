@@ -61,8 +61,8 @@ export function listQuotaSnapshots(): QuotaSnapshot[] {
  */
 export async function fetchWithQuotaTracking(
   api: QuotaApi,
-  input: RequestInfo | URL,
-  init?: RequestInit
+  input: Parameters<typeof fetch>[0],
+  init?: Parameters<typeof fetch>[1]
 ): Promise<Response> {
   const res = await fetch(input, init);
   recordQuotaFromHeaders(api, res.headers);

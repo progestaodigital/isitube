@@ -262,6 +262,34 @@ model UpdateRun {
   @@map("update_runs")
 }
 
+// IsiPanel license cache. Singleton in practice — only one active license per
+// install. App enforces singleton-ness by upserting the most-recently-validated
+// row (queries use findFirst({ deletedAt: null }, orderBy: lastValidatedAt desc)).
+//
+// `licenseKey` is encrypted with Electron `safeStorage` (DPAPI on Windows).
+// `lastResponseJson` caches the full validate response so the renderer can
+// fall back to it during the 48h grace_until window without re-validating.
+model License {
+  id               String   @id @default(uuid())
+  licenseKey       Bytes    @map("license_key") // safeStorage-encrypted
+  hwid             String
+  slug             String // 'isitube' | 'isitubepro'
+  plan             String // 'iniciante' | 'pro'
+  expiresAt        DateTime? @map("expires_at")
+  graceUntil       DateTime? @map("grace_until")
+  subscriptionUrl  String?   @map("subscription_url")
+  supportUrl       String?   @map("support_url")
+  lastValidatedAt  DateTime  @map("last_validated_at")
+  lastResponseJson String    @map("last_response_json")
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  syncedAt  DateTime? @map("synced_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  @@map("licenses")
+}
+
 // Active scheduled update. Only one is "active" at a time — setting a new
 // schedule cancels the previous.
 model ScheduledUpdate {
