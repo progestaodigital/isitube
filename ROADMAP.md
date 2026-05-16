@@ -3,7 +3,7 @@
 > Software desktop de inteligência competitiva e planejamento de conteúdo para criadores no YouTube.
 > Stack: Electron + React + TypeScript + Vite + Prisma + SQLite + Vercel AI SDK + Claude.
 
-**Status atual:** Fase 8a concluída (Anthropic + YouTube reais) · Próxima: Fase 8b (Keywords Everywhere + Trends + scraping)
+**Status atual:** Fase 8a concluída · Em curso: Fase 9 (Licenciamento real + proxy isipanel) · Despriorizada: Fase 10 (ex-8b: KE + Trends + scraping)
 **Início:** Maio de 2026 · **MVP previsto:** 9-12 semanas
 
 ---
@@ -15,7 +15,7 @@ Estas regras valem em **todas as fases** e não devem ser quebradas sem decisão
 1. **API keys nunca no renderer.** Toda chamada a API externa (YouTube, Anthropic, Keywords Everywhere, Trends, scraping) roda no main process do Electron. Renderer só fala via `window.api.*` (IPC tipado pelo `contextBridge`). Chaves vivem criptografadas no SQLite via `safeStorage` do Electron.
 2. **Windows only no MVP.** Build via `electron-builder --win` (NSIS). macOS/Linux ficam para v2+.
 3. **Código em inglês, UI em pt-BR.** Identificadores, comentários, commits em inglês. Strings de interface em português brasileiro.
-4. **BYOK puro no MVP.** Cada usuário usa chaves próprias. Plano 1 (chaves master via IsiPanel Gateway) só na v2.
+4. **Dois planos no MVP** (revisado na Fase 9): **Iniciante** (chaves master via proxy isipanel, com cotas server-enforced — Anthropic Haiku-only + YouTube com endpoints bloqueados) e **Pro** (BYOK, sem cotas, qualquer modelo). Detalhamento na Fase 9.
 5. **Cada fase termina rodável.** `npm run dev` sempre abre uma versão funcional e demonstrável. Nada de build quebrado entre fases.
 6. **Schema sync-ready desde o dia 1.** Toda tabela tem `id` UUID, `created_at`, `updated_at`, `synced_at` (nullable), `deleted_at` (nullable, soft delete). Tabela `change_log` registra mutações.
 7. **Degradação graciosa.** Quando uma fonte de dado falha (scraping, Trends, Keywords Everywhere), o app continua funcional com as outras. Score se renormaliza.
@@ -36,7 +36,8 @@ Estas regras valem em **todas as fases** e não devem ser quebradas sem decisão
 | 6 | Módulo 3 — Transcrição | ✅ feito | Janela invisível + cache permanente |
 | 7 | Licenciamento stub + onboarding + polish | ✅ feito | `LicenseProvider` interface + onboarding + migration runtime |
 | 8a | Wire up real: Anthropic + YouTube | ✅ feito | Real API calls + validação real + UX "configure chave" |
-| 8b | Wire up real: KE + Trends + scraping | ⏭️ próxima | Keywords Everywhere + Google Trends + scraping de SERP/transcrição |
+| 9 | Licenciamento real + proxy isipanel + two-slug | 🚧 em curso | IsiPanel validate + proxy server-side Anthropic/YouTube + plano iniciante com cota |
+| 10 | Wire up real: KE + Trends + scraping | ⏳ planejada | Keywords Everywhere + Google Trends + scraping de SERP/transcrição (ex-8b) |
 
 ---
 
@@ -352,9 +353,88 @@ Estas regras valem em **todas as fases** e não devem ser quebradas sem decisão
 
 ---
 
-## Fase 8 — Wire up real das APIs ⏭️ (próxima)
+## Fase 9 — Licenciamento real + proxy isipanel + two-slug 🚧
 
-**Objetivo:** Substituir mocks por chamadas reais. **Bloqueada** até o usuário passar as instruções de auth.
+**Objetivo:** Substituir o `StubLicenseProvider` por validação real com o painel isipanel (`https://api.isitools.com.br`), introduzir o plano **Iniciante** (proxy server-side pra Anthropic + YouTube com cotas) e o plano **Pro** (BYOK puro), e fazer gating de UI/features conforme o plano detectado.
+
+**Contexto:**
+- O Constraint #4 original (BYOK puro no MVP) foi revogado após alinhamento de produto: o plano Iniciante via proxy entra no MVP — necessário pra casar com o posicionamento da família "isi" (fácil pro usuário não-técnico, sem precisar criar conta Anthropic + Google Cloud + cadastrar chaves).
+- Server-side (isipanel — Phase 14.5 do painel) está **100% pronto e testado em produção** num sprint paralelo. 5/5 smoke tests passaram. Documentação completa: `CLIENT-HANDOFF.md` + `PROXY-CONTRACT.md` (entregues pelo time do painel).
+- License key de teste pra integração: `ISI-YK7Y-HHZ8-EDE8-XB27` (produto: `isitube` basic, cotas 800 cents/mês Anthropic + 5k units/dia YouTube, expira em 2036).
+
+**Entregáveis previstos (quebra em 3 sub-fases):**
+
+### 9.A.1 — Camada de provider abstrato (modo `direct` vs `proxy`)
+
+- Novo módulo `src/main/services/external/types.ts` com `ExternalApiConfig = ProxyConfig | DirectConfig`
+- Refactor de `src/main/services/ai/providers/anthropic.ts`: aceita `ExternalApiConfig`. Modo `proxy` → `createAnthropic({ apiKey: licenseKey, baseURL: 'https://api.isitools.com.br/v1/proxy/anthropic' })` (o `x-api-key` default do SDK é aceito pelo proxy). Modo `direct` → comportamento atual.
+- Refactor de `src/main/services/channels/providers/youtube-real.ts` e `src/main/services/videos/providers/youtube-real.ts`: base URL configurável. Modo `proxy` → strippa `?key=` da query e envia `Authorization: Bearer <licenseKey>`. Modo `direct` → comportamento atual.
+- Refactor de `src/main/services/keywords/providers/keywords-everywhere-real.ts`: continua só BYOK (Pro). Sem proxy no MVP.
+- Parser dos headers `X-Quota-Used`, `X-Quota-Remaining`, `X-Quota-Period`, `X-Quota-Cost` em todos os responses do proxy; persiste último snapshot e expõe via IPC pro renderer.
+
+### 9.A.2 — Licença real + two-slug discovery
+
+- Adicionar dependência `node-machine-id`.
+- HWID: SHA-256 hex 64 chars do retorno de `machineId()` (lê MachineGuid do registro Windows). Sobrevive reinstalação do app; muda em reinstalação do Windows ou clone de disco.
+- Nova tabela `License` no Prisma: `licenseKey` (encrypted via safeStorage), `hwid`, `slug` (`'isitube'` | `'isitubepro'`), `plan` (`'iniciante'` | `'pro'`), `expiresAt`, `graceUntil`, `subscriptionUrl`, `supportUrl`, `lastValidatedAt`, `lastResponseJson` (cache da resposta completa do validate).
+- Substituir `StubLicenseProvider` por `IsiPanelLicenseProvider` em `src/main/services/license/`.
+- **Two-slug discovery**: no cold start, cliente tenta `product_slug='isitubepro'` primeiro; se retornar `invalid`, fallback pra `'isitube'`. Cacheia o slug que deu match (`plan` derivado: pro/iniciante). Steady-state: 1 request por revalidação.
+- **Cache strategy**: respeita `grace_until` (48h) cacheado. Boot → fresh fetch se cache > 1h, senão usa cache. `setInterval` 6h pra refresh background.
+- Service selectors (`ai/index.ts`, `channels/index.ts`, `videos/index.ts`) consultam `getLicense()` e escolhem `direct` vs `proxy` baseado no `plan`.
+
+### 9.A.3 — UI: popup bloqueante + gating + quota display
+
+- Novo `src/renderer/src/components/license/LicenseGateModal.tsx`: modal bloqueante no boot se licença ausente/inválida. Form pra colar a chave, valida via IPC, fecha quando OK.
+- Refactor de `src/renderer/src/pages/settings/LicenseSection.tsx`: mostra plano (`Iniciante` / `Pro`), expira em, **barras de uso de cota** Anthropic (cents/mês BRL) + YouTube (units/dia), botão "Revalidar", link `subscription_url` (fallback texto se null).
+- **Gating de Settings**: ocultar `AISection`, `YouTubeSection`, `KeywordsEverywhereSection` no plano Iniciante; substitui por placeholder explicativo + CTA "Upgrade pro Pro pra usar suas próprias chaves".
+- Mapping pt-BR dos 11+ error codes do proxy (`model_not_allowed`, `endpoint_blocked`, `quota_exceeded`, `license_expired`, `license_blocked`, `hwid_mismatch`, `proxy_not_for_this_product`, `invalid_license`, `missing_credentials`, `proxy_not_configured`, `internal`).
+- 7 smoke tests do CLIENT-HANDOFF passando contra produção (`https://api.isitools.com.br`).
+
+**Critério de aceitação:**
+- App não funciona sem licença válida (modal bloqueante no boot).
+- Plano **Iniciante**: features de AI + canais funcionam via proxy server-side; sections de chave própria estão ocultas.
+- Plano **Pro**: mesma experiência atual (BYOK); licença só valida ID.
+- Headers de cota propagam do main pro renderer; barras de uso visíveis em Settings.
+- Cancelamento de chamada AI streaming aborta upstream (AbortController).
+- Sem internet < 48h: app continua funcional (respeita `grace_until`).
+- Sem internet > 48h: bloqueia com mensagem clara.
+- `hwid_mismatch`: modal "esta chave está em outra máquina, contate o suporte" com link `support_url`.
+
+**Arquivos-chave (previstos):**
+`src/main/services/external/types.ts`, `src/main/services/external/quota.ts`, `src/main/services/license/isipanel.ts`, `src/main/services/license/hwid.ts`, refactor de `src/main/services/{ai,channels,videos,keywords}/index.ts` + `*/providers/*-real.ts`, `prisma/schema.prisma` (tabela `License`) + nova migration, `src/renderer/src/components/license/LicenseGateModal.tsx`, refactor de `src/renderer/src/pages/settings/LicenseSection.tsx` + gating em `SettingsPage.tsx`.
+
+**Coordenação com o painel isipanel:**
+- Antes do primeiro teste real do cliente: pedir admin pra resetar a HWID na licença `ISI-YK7Y-HHZ8-EDE8-XB27` (pre-flight curl bindou um HWID fake `0000…`).
+- Endpoints contra `https://api.isitools.com.br`:
+  - `POST /v1/license/validate` — two-slug discovery (`product_slug='isitubepro'` ou `'isitube'`)
+  - `POST /v1/proxy/anthropic/v1/messages` — proxy Anthropic (Haiku-only no Iniciante)
+  - `GET /v1/proxy/youtube/youtube/v3/{path}` — proxy YouTube (allowlist; `search.list` bloqueado)
+
+**Decisões importantes:**
+- **Constraint #4 revogado.** Plano Iniciante via isipanel entra no MVP, não fica pra v2 — decisão de produto (família "isi" = fácil).
+- **Anthropic SDK usa `x-api-key` por default** — o proxy isipanel aceita ambos os formatos (`x-api-key` e `Authorization: Bearer`), então o `@ai-sdk/anthropic` funciona out-of-the-box passando `apiKey: licenseKey, baseURL: ...`. Não precisa override custom de header.
+- **HWID via `node-machine-id`** (não device_uuid persistido) — sobrevive reinstalação do app; muda só em reinstalação do Windows. Strict lock + admin reset manual no painel. Soft lock com cooldown 24h fica pra V1.5 se virar dor de suporte.
+- **JWT signed offline NÃO implementado no MVP** — cache simples com `grace_until` de 48h é suficiente; tampering on-disk não é vetor relevante (cracker que modifica binário simplesmente remove a checagem; JWT só atrasa).
+- **Haiku 4.5 forçado no Iniciante** — proxy rejeita outros modelos com 403. Pro escolhe livremente. Protege margem ($-COGS) e diferencia produto.
+- **`search.list` bloqueado no proxy YouTube** — custa 100 units, queimaria cota fácil. Cliente força `channels?forHandle=` ou `?forUsername=` (1 unit cada) — disciplina que o isiTube já segue internamente.
+- **Cota Google subjacente em 10k/dia** até aprovação do increase (submetido pelo painel). Com 10 Iniciantes ativos, satura ao meio-dia. **Gating do launch público real**, não do desenvolvimento.
+- **Fase 10 (ex-8b) despriorizada.** KE + Trends + scraping ficam pra depois — não bloqueiam o launch do Iniciante.
+
+**Como testar (após implementação):**
+1. Apaga a licença local (DevTools): `await window.api.license.clear()` (ou apaga row da tabela `License` via Prisma Studio). Reinicia o app — `LicenseGateModal` aparece bloqueando.
+2. Cola `ISI-YK7Y-HHZ8-EDE8-XB27` no modal → valida → fecha → chip do header mostra "INICIANTE".
+3. Settings: sections de Anthropic/YouTube/KE ocultas; section de Licença mostra barras de cota.
+4. Página Home → "Demo AI" → gera ideias de keyword → headers de quota atualizam visivelmente.
+5. Pesquisar canal por handle → vídeos reais aparecem via proxy YouTube.
+6. Restart app sem internet (depois de validar uma vez) — funciona normalmente (cache + grace_until válido).
+7. Anular `last_validated_at` (ou simular passagem do grace_until) → bloqueia com mensagem clara.
+8. Quando o admin do painel criar uma licença `isitubepro` de teste, trocar a chave no app → cliente refaz two-slug discovery → cacheia `isitubepro` → sections de chave própria reaparecem.
+
+---
+
+## Fase 10 — Wire up real: KE + Trends + scraping ⏳
+
+**Objetivo:** Substituir os mocks restantes (Keywords Everywhere, Google Trends, scraping de SERP) por chamadas reais. **Despriorizada após Fase 9** — Anthropic + YouTube já estão reais (Fase 8a), e KE no plano iniciante depende de decisão futura sobre proxy (hoje fora do escopo do isipanel).
 
 **Entregáveis previstos:**
 - Instalar `ai`, `@ai-sdk/anthropic`, `zod`
