@@ -24,7 +24,9 @@ async function selectProvider(): Promise<AIProvider | null> {
     const apiKey = await getCredentialPlainText('anthropic');
     if (apiKey) {
       const model = (await getSetting(MODEL_SETTING_KEY)) || undefined;
-      return new AnthropicProvider(apiKey, model);
+      // Plano Pro / BYOK path. Plano Iniciante (proxy) is wired in 9.A.2 once
+      // the IsiPanelLicenseProvider lands and the selector gains plan awareness.
+      return new AnthropicProvider({ mode: 'direct', apiKey }, model);
     }
   }
   return null;

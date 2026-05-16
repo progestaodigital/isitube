@@ -11,6 +11,7 @@ import { registerDialogHandlers } from './dialog';
 import { registerBackupHandlers } from './backup';
 import { registerCategoriesHandlers } from './categories';
 import { registerUpdatesHandlers } from './updates';
+import { registerQuotaHandlers } from './quota';
 
 export function registerIpcHandlers(): void {
   registerSettingsHandlers();
@@ -26,4 +27,5 @@ export function registerIpcHandlers(): void {
   registerBackupHandlers();
   registerCategoriesHandlers();
   registerUpdatesHandlers();
+  registerQuotaHandlers();
 }

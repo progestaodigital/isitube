@@ -23,6 +23,7 @@ import type {
   KeywordSourceStatuses,
   KeywordSuggestionsPayload,
   LicenseInfo,
+  QuotaSnapshot,
   BackupExportResult,
   BackupImportResult,
   BackupInspectResult,
@@ -207,6 +208,10 @@ const api: IsitubeAPI = {
   license: {
     get: (forceRefresh?: boolean): Promise<LicenseInfo> =>
       ipcRenderer.invoke('license:get', forceRefresh ?? false),
+  },
+
+  quota: {
+    list: (): Promise<QuotaSnapshot[]> => ipcRenderer.invoke('quota:list'),
   },
 
   dialog: {

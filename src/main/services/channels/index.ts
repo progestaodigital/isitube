@@ -27,7 +27,8 @@ async function getProvider(): Promise<ChannelProvider> {
   const status = await getCredentialStatus('youtube');
   if (status?.status === 'valid' && status.hasValue) {
     const key = await getCredentialPlainText('youtube');
-    if (key) return new YouTubeRealProvider(key);
+    // Plano Pro / BYOK path. Plano Iniciante (proxy) wires in 9.A.2.
+    if (key) return new YouTubeRealProvider({ mode: 'direct', apiKey: key });
   }
   return new YouTubeMockProvider();
 }

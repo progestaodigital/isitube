@@ -295,6 +295,33 @@ export type LicenseInfo = {
   reason: string | null;
 };
 
+// =============================================================================
+// Proxy quota tracking (Plano Iniciante via isipanel proxy)
+// =============================================================================
+
+/**
+ * Which upstream the snapshot tracks. Each isipanel proxy emits X-Quota-*
+ * headers per response; we cache the latest per API for renderer display.
+ */
+export type QuotaApi = 'anthropic' | 'youtube';
+
+export type QuotaSnapshot = {
+  api: QuotaApi;
+  /** Units (YouTube) or cents BRL (Anthropic) consumed in the current period. */
+  used: number;
+  /** Same unit; remaining headroom in the current period. */
+  remaining: number;
+  /**
+   * Period window key. 'YYYY-MM' for Anthropic (monthly reset, UTC) or
+   * 'YYYY-MM-DD' for YouTube (daily reset, UTC).
+   */
+  period: string;
+  /** Units this last call deducted (YouTube only; null for Anthropic). */
+  lastCallCost: number | null;
+  /** ISO timestamp when the snapshot was captured client-side. */
+  recordedAt: string;
+};
+
 export type ScheduleInfo = {
   id: string;
   scheduledAt: string;
@@ -446,6 +473,10 @@ export type IsitubeAPI = {
   };
   license: {
     get: (forceRefresh?: boolean) => Promise<LicenseInfo>;
+  };
+  quota: {
+    /** Latest cached quota snapshots (one per API; absent until first proxy call). */
+    list: () => Promise<QuotaSnapshot[]>;
   };
   schedule: {
     get: () => Promise<ScheduleInfo | null>;

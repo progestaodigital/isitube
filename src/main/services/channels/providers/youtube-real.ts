@@ -5,8 +5,10 @@ import type {
   ListAllVideosOptions,
   VideoStatsUpdate,
 } from './types';
+import type { ExternalApiConfig } from '../../external/types';
+import { fetchWithQuotaTracking } from '../../external/quota';
 
-const API_BASE = 'https://www.googleapis.com/youtube/v3';
+const DIRECT_BASE = 'https://www.googleapis.com/youtube/v3';
 const VIDEOS_BATCH = 50; // YouTube videos.list max ids per request
 const PLAYLIST_PAGE = 50; // YouTube playlistItems.list max per page
 
@@ -51,7 +53,23 @@ export class YouTubeRealProvider implements ChannelProvider {
   // every refresh. Channels rarely change their uploads playlist id.
   private uploadsPlaylistCache = new Map<string, string>();
 
-  constructor(private readonly apiKey: string) {}
+  private readonly baseUrl: string;
+  private readonly authMode: 'key-query' | 'bearer';
+  private readonly secret: string;
+
+  constructor(config: ExternalApiConfig) {
+    if (config.mode === 'proxy') {
+      // Proxy base already includes the /youtube/v3 suffix from the panel
+      // (e.g. 'https://api.isitools.com.br/v1/proxy/youtube/youtube/v3').
+      this.baseUrl = config.baseUrl;
+      this.authMode = 'bearer';
+      this.secret = config.licenseKey;
+    } else {
+      this.baseUrl = DIRECT_BASE;
+      this.authMode = 'key-query';
+      this.secret = config.apiKey;
+    }
+  }
 
   async lookupChannel(urlOrId: string): Promise<FetchedChannel> {
     const id = await this.resolveChannelId(urlOrId);
@@ -283,9 +301,9 @@ export class YouTubeRealProvider implements ChannelProvider {
   }
 
   private async fetchJSON(path: string): Promise<any> {
-    const sep = path.includes('?') ? '&' : '?';
-    const url = `${API_BASE}${path}${sep}key=${encodeURIComponent(this.apiKey)}`;
-    const res = await fetch(url);
+    const url = this.buildUrl(path);
+    const headers = this.buildHeaders();
+    const res = await fetchWithQuotaTracking('youtube', url, { headers });
     if (!res.ok) {
       let msg = `YouTube API error ${res.status}`;
       try {
@@ -297,6 +315,21 @@ export class YouTubeRealProvider implements ChannelProvider {
       throw new Error(msg);
     }
     return res.json();
+  }
+
+  private buildUrl(path: string): string {
+    if (this.authMode === 'key-query') {
+      const sep = path.includes('?') ? '&' : '?';
+      return `${this.baseUrl}${path}${sep}key=${encodeURIComponent(this.secret)}`;
+    }
+    return `${this.baseUrl}${path}`;
+  }
+
+  private buildHeaders(): Record<string, string> {
+    if (this.authMode === 'bearer') {
+      return { Authorization: `Bearer ${this.secret}` };
+    }
+    return {};
   }
 }
 

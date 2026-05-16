@@ -7,21 +7,36 @@ import type {
   GenerateTextArgs,
   GenerateTextResult,
 } from './types';
+import type { ExternalApiConfig } from '../../external/types';
+import { createTrackingFetch } from '../../external/quota';
 
 const DEFAULT_MODEL = 'claude-sonnet-4-6';
 
 /**
  * Real Anthropic provider — uses Vercel AI SDK + @ai-sdk/anthropic. The API
  * key never leaves the main process. Selected by the factory in `../index.ts`
- * only when the user's anthropic credential is in `valid` status.
+ * once the active license is valid:
+ *
+ *   - Plano Iniciante → proxy mode (license_key + isipanel proxy baseURL).
+ *     The proxy accepts the SDK's default `x-api-key` header (auth swap is
+ *     server-side). Quota headers from every response feed `quota.ts`.
+ *   - Plano Pro → direct mode (user's own anthropic key + default baseURL).
  */
 export class AnthropicProvider implements AIProvider {
   readonly name = 'anthropic' as const;
   readonly defaultModel: string;
   private readonly client: ReturnType<typeof createAnthropic>;
 
-  constructor(apiKey: string, modelId?: string | null) {
-    this.client = createAnthropic({ apiKey });
+  constructor(config: ExternalApiConfig, modelId?: string | null) {
+    if (config.mode === 'proxy') {
+      this.client = createAnthropic({
+        apiKey: config.licenseKey,
+        baseURL: config.baseUrl,
+        fetch: createTrackingFetch('anthropic'),
+      });
+    } else {
+      this.client = createAnthropic({ apiKey: config.apiKey });
+    }
     this.defaultModel = modelId || DEFAULT_MODEL;
   }
 
