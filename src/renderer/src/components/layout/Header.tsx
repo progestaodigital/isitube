@@ -1,19 +1,15 @@
-import { useEffect, useState } from 'react';
 import { Search, Sun, Moon, Bell, User } from 'lucide-react';
 import { useThemeStore } from '../../stores/theme';
 import { useRouterStore } from '../../stores/router';
 import { UpdateBadge } from './UpdateBadge';
-import type { LicenseInfo } from '@shared/types';
+import { PlanBadge } from '../license/PlanBadge';
+import { useLicense } from '../../hooks/useLicense';
 
 export function Header() {
   const theme = useThemeStore((s) => s.theme);
   const toggle = useThemeStore((s) => s.toggle);
   const navigate = useRouterStore((s) => s.navigate);
-  const [license, setLicense] = useState<LicenseInfo | null>(null);
-
-  useEffect(() => {
-    window.api.license.get().then(setLicense);
-  }, []);
+  const { info } = useLicense();
 
   return (
     <header className="flex h-14 shrink-0 items-center gap-4 border-b border-zinc-200 bg-white px-6 dark:border-zinc-800 dark:bg-[#0f0f0f]">
@@ -29,29 +25,12 @@ export function Header() {
       </div>
       <div className="flex items-center gap-1">
         <UpdateBadge />
-        {license && (
-          <button
+        {info && (
+          <PlanBadge
+            info={info}
             onClick={() => navigate('settings')}
-            title={
-              license.valid
-                ? `Licença ${license.planLabel}${license.isStub ? ' (modo stub)' : ''}`
-                : 'Licença bloqueada — clique para resolver'
-            }
-            className={
-              'mr-1 hidden items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium uppercase tracking-wider transition-colors sm:inline-flex ' +
-              (license.valid
-                ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200 dark:bg-emerald-950 dark:text-emerald-400 dark:hover:bg-emerald-900'
-                : 'bg-red-100 text-red-700 hover:bg-red-200 dark:bg-red-950 dark:text-red-400')
-            }
-          >
-            <span
-              className={
-                'inline-block h-1.5 w-1.5 rounded-full ' +
-                (license.valid ? 'bg-emerald-500' : 'bg-red-500')
-              }
-            />
-            {license.plan}
-          </button>
+            className="mr-1 hidden sm:inline-flex"
+          />
         )}
         <button
           onClick={toggle}
