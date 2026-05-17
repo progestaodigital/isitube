@@ -1,11 +1,15 @@
-import { useCallback, useEffect, useState } from 'react';
-import { Lightbulb, Flame, Sprout, ArrowRight, Hash, X } from 'lucide-react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Lightbulb, Flame, Sprout, ArrowRight, Hash, X, Loader2 } from 'lucide-react';
 import { Card } from '../../components/ui/Card';
 import { Skeleton } from '../../components/ui/Skeleton';
 import { cn } from '../../lib/cn';
 import type { KeywordSuggestion, KeywordSuggestionsPayload } from '@shared/types';
 
 type SuggestionTab = 'outliers' | 'evergreen';
+
+// Espaçamento entre buscas no background pre-compute. O Google Trends rate-
+// limita agressivamente em ~1 req/s; 700ms dá folga sem ser sofrido demais.
+const PRECOMPUTE_GAP_MS = 700;
 
 interface SuggestionsPanelProps {
   onSelectKeyword: (term: string) => void;
@@ -16,6 +20,11 @@ export function SuggestionsPanel({ onSelectKeyword }: SuggestionsPanelProps) {
   const [tab, setTab] = useState<SuggestionTab>('outliers');
   const [collapsed, setCollapsed] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [computingTerms, setComputingTerms] = useState<Set<string>>(new Set());
+
+  // Ref pra abortar o pre-compute loop quando o componente desmonta ou
+  // quando uma exclusão dispara um refresh (evita corrida de estados).
+  const precomputeAbort = useRef<{ cancelled: boolean } | null>(null);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -35,6 +44,78 @@ export function SuggestionsPanel({ onSelectKeyword }: SuggestionsPanelProps) {
     const off = window.api.events.onUpdateRunCompleted(() => refresh());
     return off;
   }, [refresh]);
+
+  // Background pre-compute do score pra sugestões que ainda não foram
+  // analisadas. Roda sequencialmente com gap pra não estourar rate limit do
+  // Trends/scraping. Quando cada busca completa, marca o termo como pronto
+  // e atualiza o card localmente sem refetch global (mais responsivo).
+  useEffect(() => {
+    if (!data) return;
+    const allSuggestions = [...data.outliers, ...data.evergreen];
+    const missing = allSuggestions.filter((s) => s.scoreValue === null);
+    if (missing.length === 0) return;
+
+    const abort = { cancelled: false };
+    precomputeAbort.current = abort;
+
+    (async () => {
+      // Dedup terms (outliers + evergreen podem ter o mesmo termo).
+      const seen = new Set<string>();
+      const queue: string[] = [];
+      for (const s of missing) {
+        if (seen.has(s.term)) continue;
+        seen.add(s.term);
+        queue.push(s.term);
+      }
+
+      for (const term of queue) {
+        if (abort.cancelled) return;
+        setComputingTerms((prev) => new Set(prev).add(term));
+        try {
+          const res = await window.api.keywords.search(term);
+          if (abort.cancelled) return;
+          setData((prev) => {
+            if (!prev) return prev;
+            return {
+              outliers: prev.outliers.map((s) =>
+                s.term === term
+                  ? {
+                      ...s,
+                      scoreValue: res.score.value ?? null,
+                      scoreLastComputedAt: res.searchedAt,
+                    }
+                  : s
+              ),
+              evergreen: prev.evergreen.map((s) =>
+                s.term === term
+                  ? {
+                      ...s,
+                      scoreValue: res.score.value ?? null,
+                      scoreLastComputedAt: res.searchedAt,
+                    }
+                  : s
+              ),
+            };
+          });
+        } catch {
+          // Falha de uma busca não bloqueia as outras. O card permanece sem
+          // score; usuário pode clicar pra tentar manualmente.
+        } finally {
+          setComputingTerms((prev) => {
+            const next = new Set(prev);
+            next.delete(term);
+            return next;
+          });
+        }
+        if (abort.cancelled) return;
+        await sleep(PRECOMPUTE_GAP_MS);
+      }
+    })();
+
+    return () => {
+      abort.cancelled = true;
+    };
+  }, [data]);
 
   const items = tab === 'outliers' ? data?.outliers ?? [] : data?.evergreen ?? [];
 
@@ -111,6 +192,7 @@ export function SuggestionsPanel({ onSelectKeyword }: SuggestionsPanelProps) {
                 <SuggestionItem
                   key={`${s.source}-${s.term}`}
                   suggestion={s}
+                  computing={computingTerms.has(s.term)}
                   onClick={() => onSelectKeyword(s.term)}
                   onExclude={async () => {
                     await window.api.keywords.excludeSuggestion(s.term);
@@ -162,10 +244,12 @@ function TabButton({
 
 function SuggestionItem({
   suggestion,
+  computing,
   onClick,
   onExclude,
 }: {
   suggestion: KeywordSuggestion;
+  computing: boolean;
   onClick: () => void;
   onExclude: () => void;
 }) {
@@ -182,7 +266,7 @@ function SuggestionItem({
         className="flex min-w-0 flex-1 items-center gap-3 p-2.5 text-left"
         title="Verificar volume de busca"
       >
-        <Hash className="h-4 w-4 shrink-0 text-zinc-400" />
+        <ScoreChip score={suggestion.scoreValue} computing={computing} />
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-medium">{suggestion.term}</p>
           <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-zinc-500">
@@ -216,6 +300,47 @@ function SuggestionItem({
       </button>
     </div>
   );
+}
+
+function ScoreChip({ score, computing }: { score: number | null; computing: boolean }) {
+  if (score === null) {
+    return (
+      <div
+        className="flex h-9 w-9 shrink-0 flex-col items-center justify-center rounded-full bg-zinc-100 dark:bg-zinc-800"
+        title={computing ? 'Calculando score…' : 'Score ainda não calculado'}
+      >
+        {computing ? (
+          <Loader2 className="h-3.5 w-3.5 animate-spin text-zinc-400" />
+        ) : (
+          <Hash className="h-3.5 w-3.5 text-zinc-400" />
+        )}
+      </div>
+    );
+  }
+
+  const rounded = Math.round(score);
+  const tone =
+    rounded >= 70
+      ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400'
+      : rounded >= 40
+        ? 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-400'
+        : 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-400';
+
+  return (
+    <div
+      className={cn(
+        'flex h-9 w-9 shrink-0 flex-col items-center justify-center rounded-full text-xs font-bold',
+        tone
+      )}
+      title={`Score 0-100: ${rounded}`}
+    >
+      {rounded}
+    </div>
+  );
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function formatCompact(n: number): string {

@@ -146,6 +146,38 @@ export type KeywordSearchOptions = {
 };
 
 // =============================================================================
+// Channel-mined keyword suggestions (panel "Sugestões dos seus canais")
+// =============================================================================
+
+/**
+ * Single suggested keyword mined from the user's channels (outlier videos or
+ * evergreen ones). `scoreValue` and `scoreLastComputedAt` are filled when
+ * a cached search exists for this term — null when the user hasn't run a
+ * search (or pre-compute hasn't gotten to it) yet.
+ */
+export type KeywordSuggestion = {
+  term: string;
+  /** Where the term was mined: a curated tag (stronger signal) or a title n-gram. */
+  source: 'tag' | 'title';
+  /** Number of distinct videos this term appears on. */
+  occurrences: number;
+  sampleVideoIds: string[];
+  /** Aggregate view count across the videos this term appears on. */
+  totalViews: number;
+  shortsCount: number;
+  longCount: number;
+  /** Cached score (0-100) from the most recent search for this term; null if uncomputed. */
+  scoreValue: number | null;
+  /** ISO timestamp of when the cached score was computed; null if uncomputed. */
+  scoreLastComputedAt: string | null;
+};
+
+export type KeywordSuggestionsPayload = {
+  outliers: KeywordSuggestion[];
+  evergreen: KeywordSuggestion[];
+};
+
+// =============================================================================
 // Channel monitoring (Module 1)
 // =============================================================================
 

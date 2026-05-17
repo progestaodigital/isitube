@@ -234,9 +234,62 @@ export async function getKeywordSuggestions(): Promise<KeywordSuggestionsPayload
     }
   }
 
+  const outliers = extractAndRank(outlierVideos, excluded);
+  const evergreen = extractAndRank(evergreenVideos, excluded);
+
+  // Hidrata score cacheado pra cada termo. O score é "fixado" — uma vez
+  // computado via Pesquisar (ou via background pre-compute), aparece aqui
+  // pra o usuário ver a qualidade SEO da sugestão sem precisar clicar.
+  // Lemos o KeywordSearch mais recente independente do TTL — o display é
+  // informativo, a re-busca acontece quando o usuário clica no card.
+  const allTerms = new Set<string>();
+  for (const s of outliers) allTerms.add(s.term);
+  for (const s of evergreen) allTerms.add(s.term);
+  const scoreByTerm = await loadLatestScores(Array.from(allTerms));
+
   return {
-    outliers: extractAndRank(outlierVideos, excluded),
-    evergreen: extractAndRank(evergreenVideos, excluded),
+    outliers: outliers.map((s) => mergeScore(s, scoreByTerm)),
+    evergreen: evergreen.map((s) => mergeScore(s, scoreByTerm)),
+  };
+}
+
+type TermScore = { value: number | null; computedAt: string };
+
+async function loadLatestScores(terms: string[]): Promise<Map<string, TermScore>> {
+  const out = new Map<string, TermScore>();
+  if (terms.length === 0) return out;
+
+  const keywords = await getPrisma().keyword.findMany({
+    where: { term: { in: terms }, deletedAt: null },
+    include: {
+      searches: {
+        where: { deletedAt: null },
+        orderBy: { createdAt: 'desc' },
+        take: 1,
+      },
+    },
+  });
+
+  for (const kw of keywords) {
+    const latest = kw.searches[0];
+    if (!latest) continue;
+    out.set(kw.term, {
+      value: latest.scoreValue ?? null,
+      computedAt: latest.createdAt.toISOString(),
+    });
+  }
+  return out;
+}
+
+function mergeScore(
+  suggestion: KeywordSuggestion,
+  scoreByTerm: Map<string, TermScore>
+): KeywordSuggestion {
+  const score = scoreByTerm.get(suggestion.term);
+  return {
+    ...suggestion,
+    scoreValue: score?.value ?? null,
+    scoreLastComputedAt: score?.computedAt ?? null,
   };
 }
 
@@ -285,7 +338,7 @@ function extractAndRank(videos: DbVideo[], excluded: Set<string> = new Set()): K
     }
   }
 
-  // Convert to array
+  // Convert to array. Score fields são preenchidos depois por mergeScore.
   const suggestions: KeywordSuggestion[] = Array.from(map.values()).map((s) => ({
     term: s.term,
     source: s.source,
@@ -294,6 +347,8 @@ function extractAndRank(videos: DbVideo[], excluded: Set<string> = new Set()): K
     totalViews: s.totalViews,
     shortsCount: s.shorts,
     longCount: s.long,
+    scoreValue: null,
+    scoreLastComputedAt: null,
   }));
 
   // Filter:
