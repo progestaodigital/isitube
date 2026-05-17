@@ -441,6 +441,8 @@ export type EvergreenVideo = {
   /** Legacy: kept so existing UI doesn't break. Always 'window' in new algo. */
   basedOn: 'window' | 'all-time';
   snapshotCount: number;
+  /** Duração do vídeo em segundos. Usado pra filtrar Shorts (≤180) vs longos no UI. */
+  durationSec: number | null;
 };
 
 export type EvergreenFilters = {

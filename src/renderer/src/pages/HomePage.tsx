@@ -42,6 +42,8 @@ export function HomePage() {
 
   const [data, setData] = useState<DashboardData | null>(null);
   const [updating, setUpdating] = useState(false);
+  const [flaggedType, setFlaggedType] = useState<TopListVideoType>('long');
+  const [evergreenType, setEvergreenType] = useState<TopListVideoType>('long');
 
   const refresh = useCallback(async () => {
     const [channels, flagged, evergreen, extracted, runs, schedule] = await Promise.all([
@@ -145,37 +147,54 @@ export function HomePage() {
           icon={Flame}
           title="Top vídeos em destaque"
           tint="text-amber-600 dark:text-amber-400"
-          empty="Nenhum vídeo sinalizado ainda. Atualize seus canais."
-          videos={data?.flagged.slice(0, 5) ?? []}
+          empty={
+            flaggedType === 'long'
+              ? 'Nenhum vídeo longo sinalizado. Tente alternar pra Curtos ou rode "Atualizar agora".'
+              : 'Nenhum Short sinalizado. Tente alternar pra Longos ou rode "Atualizar agora".'
+          }
+          videos={
+            data?.flagged
+              .filter((v) => matchesTopListType(v.durationSec, flaggedType))
+              .slice(0, 5) ?? []
+          }
           renderRight={(v) => (
             <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800 dark:bg-amber-950 dark:text-amber-300">
               {Math.round(v.outlierPercent ?? 0)}%
             </span>
           )}
           onSeeMore={() => navigate('channels')}
+          typeFilter={flaggedType}
+          onTypeFilterChange={setFlaggedType}
         />
         <TopList
           icon={Sprout}
           title="Top vídeos evergreen"
           tint="text-emerald-600 dark:text-emerald-400"
-          empty="Sem evergreen ainda. Precisa de pelo menos 2 atualizações em dias diferentes."
+          empty={
+            evergreenType === 'long'
+              ? 'Nenhum vídeo longo evergreen ainda. Tente alternar pra Curtos.'
+              : 'Nenhum Short evergreen ainda. Tente alternar pra Longos.'
+          }
           videos={
-            data?.evergreen.slice(0, 5).map((e) => ({
-              id: e.id,
-              youtubeId: e.youtubeId,
-              channelId: e.channelId,
-              channelTitle: e.channelTitle,
-              title: e.title,
-              thumbnailUrl: e.thumbnailUrl,
-              viewCount: e.totalViewCount,
-              likeCount: null,
-              commentCount: null,
-              durationSec: null,
-              publishedAt: e.publishedAt,
-              channelAvgViewsAtCheck: null,
-              outlierPercent: null,
-              flaggedAsOutlier: false,
-            })) ?? []
+            data?.evergreen
+              .filter((e) => matchesTopListType(e.durationSec, evergreenType))
+              .slice(0, 5)
+              .map((e) => ({
+                id: e.id,
+                youtubeId: e.youtubeId,
+                channelId: e.channelId,
+                channelTitle: e.channelTitle,
+                title: e.title,
+                thumbnailUrl: e.thumbnailUrl,
+                viewCount: e.totalViewCount,
+                likeCount: null,
+                commentCount: null,
+                durationSec: e.durationSec,
+                publishedAt: e.publishedAt,
+                channelAvgViewsAtCheck: null,
+                outlierPercent: null,
+                flaggedAsOutlier: false,
+              })) ?? []
           }
           renderRight={(v) => {
             const ev = data?.evergreen.find((e) => e.id === v.id);
@@ -186,6 +205,8 @@ export function HomePage() {
             ) : null;
           }}
           onSeeMore={() => navigate('channels')}
+          typeFilter={evergreenType}
+          onTypeFilterChange={setEvergreenType}
         />
       </div>
 
@@ -309,6 +330,8 @@ function StatusCard({
   );
 }
 
+type TopListVideoType = 'long' | 'shorts';
+
 function TopList({
   icon: Icon,
   title,
@@ -317,6 +340,8 @@ function TopList({
   videos,
   renderRight,
   onSeeMore,
+  typeFilter,
+  onTypeFilterChange,
 }: {
   icon: typeof Flame;
   title: string;
@@ -325,6 +350,8 @@ function TopList({
   videos: VideoInfo[];
   renderRight: (v: VideoInfo) => React.ReactNode;
   onSeeMore: () => void;
+  typeFilter?: TopListVideoType;
+  onTypeFilterChange?: (next: TopListVideoType) => void;
 }) {
   const open = useVideoDetailStore((s) => s.open);
   return (
@@ -334,12 +361,17 @@ function TopList({
           <Icon className={`h-4 w-4 ${tint}`} />
           <h3 className="text-sm font-semibold">{title}</h3>
         </div>
-        <button
-          onClick={onSeeMore}
-          className="inline-flex items-center gap-1 text-[11px] text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100"
-        >
-          ver tudo <ArrowRight className="h-3 w-3" />
-        </button>
+        <div className="flex items-center gap-2">
+          {typeFilter && onTypeFilterChange && (
+            <TypeToggle value={typeFilter} onChange={onTypeFilterChange} />
+          )}
+          <button
+            onClick={onSeeMore}
+            className="inline-flex items-center gap-1 text-[11px] text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100"
+          >
+            ver tudo <ArrowRight className="h-3 w-3" />
+          </button>
+        </div>
       </div>
       {videos.length === 0 ? (
         <p className="mt-3 text-xs text-zinc-500">{empty}</p>
@@ -370,6 +402,64 @@ function TopList({
       )}
     </Card>
   );
+}
+
+function TypeToggle({
+  value,
+  onChange,
+}: {
+  value: TopListVideoType;
+  onChange: (v: TopListVideoType) => void;
+}) {
+  return (
+    <div className="flex rounded-full bg-zinc-100 p-0.5 dark:bg-zinc-800">
+      <button
+        onClick={() => onChange('long')}
+        className={cn(
+          'rounded-full px-2.5 py-0.5 text-[10px] font-medium transition-colors',
+          value === 'long'
+            ? 'bg-white text-zinc-900 shadow-sm dark:bg-zinc-700 dark:text-zinc-50'
+            : 'text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100'
+        )}
+        title="Mostrar apenas vídeos longos (>3min)"
+      >
+        Longos
+      </button>
+      <button
+        onClick={() => onChange('shorts')}
+        className={cn(
+          'rounded-full px-2.5 py-0.5 text-[10px] font-medium transition-colors',
+          value === 'shorts'
+            ? 'bg-white text-zinc-900 shadow-sm dark:bg-zinc-700 dark:text-zinc-50'
+            : 'text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100'
+        )}
+        title="Mostrar apenas Shorts (≤3min)"
+      >
+        Curtos
+      </button>
+    </div>
+  );
+}
+
+// Limite de duração de um Short: 180s (consistente com keywords/videos/channels services).
+const SHORTS_MAX_DURATION_SEC = 180;
+
+function matchesTopListType(
+  durationSec: number | null | undefined,
+  type: TopListVideoType
+): boolean {
+  if (type === 'shorts') {
+    return (
+      durationSec !== null &&
+      durationSec !== undefined &&
+      durationSec > 0 &&
+      durationSec <= SHORTS_MAX_DURATION_SEC
+    );
+  }
+  // 'long' — qualquer coisa > 180s. Vídeos com duração desconhecida (null/0)
+  // entram aqui também por default porque tipicamente são lives/premieres
+  // pendentes de extração (que viram longos quando metadata for atualizada).
+  return durationSec === null || durationSec === undefined || durationSec === 0 || durationSec > SHORTS_MAX_DURATION_SEC;
 }
 
 function formatCompact(n: number): string {

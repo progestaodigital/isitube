@@ -320,6 +320,7 @@ export async function getEvergreenVideos(
         // Legacy fields for backwards compat with current UI:
         basedOn: 'window',
         snapshotCount: cv.raw.snapshots.length,
+        durationSec: cv.raw.durationSec,
       });
     }
   }
