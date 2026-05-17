@@ -3,7 +3,7 @@
 > Software desktop de inteligência competitiva e planejamento de conteúdo para criadores no YouTube.
 > Stack: Electron + React + TypeScript + Vite + Prisma + SQLite + Vercel AI SDK + Claude.
 
-**Status atual:** Fase 9 concluída (licença real + proxy isipanel + plano Iniciante/Pro) · Lançado em 17/05/2026 como v0.3.0 · Próxima: Fase 10 (KE + Trends + scraping reais)
+**Status atual:** Fase 10 concluída (autocomplete real + telemetria por provider + tela de Status + limpeza de mocks dead-code) · Lançado em 17/05/2026 como v0.4.0 · Próxima: a definir
 **Início:** Maio de 2026 · **MVP previsto:** 9-12 semanas
 
 ---
@@ -37,7 +37,7 @@ Estas regras valem em **todas as fases** e não devem ser quebradas sem decisão
 | 7 | Licenciamento stub + onboarding + polish | ✅ feito | `LicenseProvider` interface + onboarding + migration runtime |
 | 8a | Wire up real: Anthropic + YouTube | ✅ feito | Real API calls + validação real + UX "configure chave" |
 | 9 | Licenciamento real + proxy isipanel + two-slug | ✅ feito | IsiPanel validate + proxy server-side Anthropic/YouTube + plano Iniciante/Pro (v0.3.0) |
-| 10 | Wire up real: KE + Trends + scraping | ⏭️ próxima | Keywords Everywhere + Google Trends + scraping de SERP/transcrição (ex-8b) |
+| 10 | Polish dos providers reais + autocomplete + tela de Status | ✅ feito | Autocomplete real do YouTube + Trends rate-limit cooldown + telemetria por provider + tela "Status das integrações" (v0.4.0) |
 
 ---
 
@@ -448,31 +448,75 @@ Estas regras valem em **todas as fases** e não devem ser quebradas sem decisão
 
 ---
 
-## Fase 10 — Wire up real: KE + Trends + scraping ⏳
+## Fase 10 — Polish dos providers reais + autocomplete + tela de Status ✅
 
-**Objetivo:** Substituir os mocks restantes (Keywords Everywhere, Google Trends, scraping de SERP) por chamadas reais. **Despriorizada após Fase 9** — Anthropic + YouTube já estão reais (Fase 8a), e KE no plano iniciante depende de decisão futura sobre proxy (hoje fora do escopo do isipanel).
+**Objetivo (re-escopado):** A descrição original previa "wire up real KE + Trends + scraping", mas auditoria pré-execução revelou que isso já tinha sido feito organicamente nas Fases 8a/9. O que sobrou eram polishes: substituir o autocomplete (último mock realmente vivo), limpar mocks dead-code, endurecer Trends contra 429, adicionar telemetria leve, e construir a tela "Status das integrações" prevista desde o plano inicial mas nunca implementada.
 
-**Entregáveis previstos:**
-- Instalar `ai`, `@ai-sdk/anthropic`, `zod`
-- Implementar `AnthropicProvider` real usando Vercel AI SDK
-- Implementar `YouTubeProvider` real (Google APIs Node.js client ou fetch direto)
-- Implementar `KeywordsEverywhereProvider` real
-- Implementar `TrendsProvider` real (google-trends-api ou implementação própria)
-- Implementar scraping real para transcrição e SERP analysis
-- Substituir o `testCredential` mock por validação real por provider:
-  - Anthropic: `GET /v1/models`
-  - YouTube: `GET /youtube/v3/channels?part=id&forUsername=GoogleDevelopers`
-  - Keywords Everywhere: endpoint de validação
-- Trocar `selectProvider()` em `services/ai/index.ts` para usar Anthropic quando credencial válida
-- Trocar todos os providers mock em keywords/channels para versões reais
-- Logs locais de uso e custo estimado por chamada de IA
-- Página de status de saúde por provider (cota restante, créditos, latência média)
+**Entregue (4 sub-fases):**
 
-**Critério de aceitação:**
-- Cadastrar chave real → testar conexão → validação real bate na API
-- Pesquisar keyword → 3 fontes reais respondem (com degradação graciosa se uma falhar)
-- Cadastrar canal real → vídeos reais aparecem
-- Extrair transcrição real → texto verdadeiro do vídeo
+### 10.A — Autocomplete real do YouTube (commit `97c6a2c`)
+
+- Substitui `keywords/autocomplete.ts` (mock de sufixos hardcoded "para iniciantes / em 2026 / ...") por chamada ao endpoint público `suggestqueries.google.com/complete/search?client=firefox&ds=yt&hl=pt-BR&gl=br&q=...` — mesmo endpoint que o YouTube usa no próprio search box. Sem chave de API.
+- Timeout 1.5s via AbortController (autocomplete dispara a cada tecla, não pode travar digitação).
+- Fallback silencioso pros sufixos antigos quando o endpoint falha (rate limit, anti-bot, sem internet) — UX sobrevive sem sugestões "vivas".
+
+### 10.B — Limpeza de dead code (commit `e3b761e`)
+
+- Deletados 3 mocks órfãos que nunca eram chamados em produção (só ficavam `void X;` pra silenciar lint):
+  - `keywords/providers/scraping.ts`
+  - `keywords/providers/trends.ts`
+  - `transcripts/providers/youtube-mock.ts`
+- **Bug encontrado durante a limpeza**: `keywords/free-ideas.ts` importava `TrendsProvider` (mock!) em vez de `GoogleTrendsRealProvider`. O gerador de ideias "Sem IA" estava devolvendo tendências sintéticas em vez de queries reais. Corrigido.
+- Mocks mantidos como fallback ativo: `keywords-everywhere.ts` (Pro sem chave BYOK), `channels/youtube-mock.ts`, `videos/youtube-mock.ts` (idem).
+
+### 10.C — Trends cooldown + telemetria por provider (commit `9b6cb67`)
+
+- `trends-real.ts`: cooldown de 5min após qualquer erro que cheire a rate limit (regex em "429", "rate limit", "too many", "unavailable"). Bater de novo com 429 só piora o ban; melhor calar.
+- Novo módulo `src/main/services/telemetry/providers.ts` com store in-memory `recordSuccess/recordFailure` + snapshot `{ lastSuccessAt, lastErrorAt, lastErrorMessage, totalCalls, totalFailures }` por `ProviderKey`.
+- Telemetry hooked em 7 providers reais: anthropic, youtube-data-api (channels + videos), youtube-scraping (ytsr), youtube-transcript (com tratamento especial: "sem legendas" conta como sucesso), youtube-autocomplete, trends, keywords-everywhere.
+- Shared types: `ProviderKey` + `ProviderSnapshot`. IPC `health:list` exposto via `window.api.health.list()`.
+- **Decisão consciente:** NÃO persistir em DB. Stats "desde o boot" são mais úteis que histórico longo pra responder "essa integração está saudável agora?" e cobra schema zero.
+
+### 10.D — Tela "Status das integrações" (commit `52b9f93`)
+
+- `pages/settings/HealthSection.tsx` — lista os 9 providers conhecidos em ordem fixa (independente da ordem que foram chamados pela 1ª vez). Cada linha:
+  - Ícone por status (✅ OK / 🔴 ERRO / ⚪ OCIOSO)
+  - Nome friendly em pt-BR + descrição curta
+  - Última chamada OK + última falha (relativo: "5 min atrás", "2h atrás") + contadores
+  - Mensagem completa do erro quando estado=erro
+- Tick a cada 30s pra re-renderizar os "X min atrás" sozinhos. Botão Atualizar pra refetch.
+- **Escopo deliberadamente enxuto (opção 1 escolhida pelo usuário):** só snapshot. Sem latência média 24h, sem sparkline, sem alertas push.
+- Posicionada entre BackupSection e DataSection no SettingsPage. Visível pra Iniciante e Pro.
+
+**Arquivos-chave (real):**
+- Novo: `src/main/services/telemetry/providers.ts`, `src/main/ipc/health.ts`, `src/renderer/src/pages/settings/HealthSection.tsx`
+- Refator: `src/main/services/keywords/autocomplete.ts` (real + fallback), `src/main/services/keywords/providers/trends-real.ts` (cooldown), 7 providers reais ganhando hooks de telemetria, `keywords/free-ideas.ts` (fix import mock→real), `keywords/index.ts` + `transcripts/index.ts` (limpeza de imports dead)
+- Shared: `src/shared/types.ts` (+`ProviderKey`, `ProviderSnapshot`, `IsitubeAPI.health`)
+- Deletados: 3 arquivos mock orfãos (~300 linhas removidas)
+
+**Bonus entregue na mesma rodada (commits fora das sub-fases 10):**
+- `de6dc34` — fix(channels/evergreen): filtro 'Tipo' (Shorts/Longo/Desconhecido) não estava aplicando. Renderer enviava `videoType` mas o `analytics.ts` ignorava silenciosamente. Aplicado dentro do loop de cálculo, antes do push (baseline do canal continua sendo computada com todos os tipos — filtro é só display).
+- `3a2d4a4` — feat(home): toggle Longos/Curtos nos cards "Top vídeos em destaque" e "Top vídeos evergreen" da página Início. Default Longos. Filtro client-side (count nos MetricCards não muda). `EvergreenVideo` ganha `durationSec` (já existia no DB, só não era projetado).
+
+**Decisões importantes:**
+- **Fase 10 re-escopada antes de codar.** A descrição original era inerited de quando vários providers eram mock. Auditoria pré-execução revelou que só o autocomplete continuava sendo mock vivo; os outros "wire up real" itens já tinham acontecido em 8a/9. Re-escopo focou no que realmente faltava + polish.
+- **Endpoint público do YouTube pra autocomplete** (suggestqueries.google.com com `client=firefox`) — não documentado mas estável há anos. Se quebrar, fallback pro mock antigo continua salvando a UX.
+- **Cooldown em vez de retry** pro Trends rate limit. Retry com backoff em endpoint que rate-limita por IP só queima IP do usuário mais rápido.
+- **Telemetria in-memory, não persistida**. Reseta no boot. Trade-off: perde histórico de >24h, ganha schema zero + clareza ("o que aconteceu desde que abri o app").
+- **Health screen é só snapshot (opção 1)** — usuário escolheu o escopo mínimo. Sparkline + latência média + alertas push ficam pra fase futura se aparecer caso de uso.
+
+**Como testar (validado em v0.4.0):**
+1. SearchBar de Keywords: digitar "receit" → autocomplete real do YouTube aparece em ~300ms (não mais sufixos sintéticos).
+2. Free ideas no IdeaGenerator (Sem IA, seed "receitas fitness") → queries em ascensão reais do Trends (quando Trends não está em cooldown).
+3. Settings → "Status das integrações" → todas as integrações começam como OCIOSO; conforme você usa features, viram OK ou ERRO.
+4. Forçar erro: desconfigurar a chave Anthropic e gerar ideia → Anthropic vai pra estado ERRO com mensagem.
+5. Disparar várias buscas de keyword em sequência → Trends pode entrar em cooldown (mensagem clara "Trends em cooldown (rate limit recente). Tente novamente em Xs.").
+6. Página Canais → aba Evergreen → filtro Tipo (Shorts / Longos / Desconhecido) agora funciona.
+7. Início → Top vídeos em destaque + Top vídeos evergreen → toggle Longos / Curtos no header de cada card filtra a lista. Default Longos.
+
+**Lançado como v0.4.0** em 17/05/2026.
+
+---
 
 ---
 
