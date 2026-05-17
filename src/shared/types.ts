@@ -489,6 +489,7 @@ export type IsitubeAPI = {
     setSourceEnabled: (source: KeywordSource, enabled: boolean) => Promise<void>;
     generateFreeIdeas: (seed: string) => Promise<FreeKeywordIdeasResult>;
     getSuggestions: () => Promise<KeywordSuggestionsPayload>;
+    excludeSuggestion: (term: string) => Promise<void>;
     testTrends: () => Promise<{ success: boolean; message: string }>;
   };
   channels: {

@@ -1,8 +1,15 @@
 import { getPrisma } from '../../db';
+import { getSetting, setSetting } from '../settings';
 import type {
   KeywordSuggestion,
   KeywordSuggestionsPayload,
 } from '@shared/types';
+
+// Persisted list of excluded suggestion terms. JSON-serialized array of
+// normalized terms in a single Setting row. We normalize before storing so
+// matches are case-/accent-insensitive against the `term` field returned by
+// extractAndRank (which is also normalized).
+const EXCLUDED_SETTING_KEY = 'keywords.suggestions.excluded';
 
 // pt-BR + en stopwords. Conservative list — focus on words that appear in
 // almost every video title and would dominate the n-gram counts.
@@ -103,8 +110,60 @@ type DbVideo = {
   channelId: string;
 };
 
+async function loadExcludedSet(): Promise<Set<string>> {
+  const raw = await getSetting(EXCLUDED_SETTING_KEY);
+  if (!raw) return new Set();
+  try {
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) {
+      return new Set(parsed.filter((t): t is string => typeof t === 'string'));
+    }
+  } catch {
+    /* corrupted JSON — fall through */
+  }
+  return new Set();
+}
+
+async function saveExcludedSet(set: Set<string>): Promise<void> {
+  await setSetting(EXCLUDED_SETTING_KEY, JSON.stringify(Array.from(set)));
+}
+
+/**
+ * Marca o `term` como excluído da lista de sugestões. Persiste no Setting
+ * `keywords.suggestions.excluded`. Próximas chamadas a getKeywordSuggestions
+ * filtram esse termo e o slot é preenchido pelo próximo melhor candidato
+ * (filtro acontece antes do slice TOP_N).
+ *
+ * Idempotente — excluir o mesmo termo duas vezes é no-op.
+ */
+export async function excludeSuggestion(term: string): Promise<void> {
+  const normalized = normalize(term);
+  if (!normalized) return;
+  const set = await loadExcludedSet();
+  if (set.has(normalized)) return;
+  set.add(normalized);
+  await saveExcludedSet(set);
+}
+
+/**
+ * Remove o `term` da lista de exclusões. Não usado pelo MVP (sem UI de undo)
+ * mas exposto pra eventual settings panel ou troubleshoot via DevTools.
+ */
+export async function unexcludeSuggestion(term: string): Promise<void> {
+  const normalized = normalize(term);
+  if (!normalized) return;
+  const set = await loadExcludedSet();
+  if (!set.delete(normalized)) return;
+  await saveExcludedSet(set);
+}
+
+export async function listExcludedSuggestions(): Promise<string[]> {
+  return Array.from(await loadExcludedSet());
+}
+
 export async function getKeywordSuggestions(): Promise<KeywordSuggestionsPayload> {
   const prisma = getPrisma();
+  const excluded = await loadExcludedSet();
 
   // 1. Outlier videos (flagged as outlier, any age)
   const outlierVideos = await prisma.video.findMany({
@@ -176,12 +235,12 @@ export async function getKeywordSuggestions(): Promise<KeywordSuggestionsPayload
   }
 
   return {
-    outliers: extractAndRank(outlierVideos),
-    evergreen: extractAndRank(evergreenVideos),
+    outliers: extractAndRank(outlierVideos, excluded),
+    evergreen: extractAndRank(evergreenVideos, excluded),
   };
 }
 
-function extractAndRank(videos: DbVideo[]): KeywordSuggestion[] {
+function extractAndRank(videos: DbVideo[], excluded: Set<string> = new Set()): KeywordSuggestion[] {
   const map = new Map<
     string,
     {
@@ -244,6 +303,7 @@ function extractAndRank(videos: DbVideo[]): KeywordSuggestion[] {
   //     ruído; exigir 3+ ocorrências eliminava quase tudo em canais que
   //     postam vídeos de tópicos únicos (caso comum: Hormozi, Mateus Dias).
   const filtered = suggestions.filter((s) => {
+    if (excluded.has(s.term)) return false;
     if (s.source === 'tag') return s.occurrences >= 2 || s.totalViews >= 10_000;
     return s.occurrences >= 2;
   });

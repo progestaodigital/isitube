@@ -7,7 +7,10 @@ import {
   setSourceEnabled,
 } from '../services/keywords';
 import { generateFreeIdeas } from '../services/keywords/free-ideas';
-import { getKeywordSuggestions } from '../services/keywords/suggestions';
+import {
+  excludeSuggestion,
+  getKeywordSuggestions,
+} from '../services/keywords/suggestions';
 import { GoogleTrendsRealProvider } from '../services/keywords/providers/trends-real';
 import type { KeywordSearchOptions, KeywordSource } from '@shared/types';
 
@@ -68,6 +71,13 @@ export function registerKeywordsHandlers(): void {
 
   ipcMain.handle('keywords:get-suggestions', async () => {
     return getKeywordSuggestions();
+  });
+
+  ipcMain.handle('keywords:exclude-suggestion', async (_event, term: unknown) => {
+    if (typeof term !== 'string' || term.trim().length === 0) {
+      throw new Error('keywords:exclude-suggestion expects a non-empty string');
+    }
+    await excludeSuggestion(term);
   });
 
   ipcMain.handle('keywords:test-trends', async () => {

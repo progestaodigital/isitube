@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Lightbulb, Flame, Sprout, ArrowRight, Hash } from 'lucide-react';
+import { Lightbulb, Flame, Sprout, ArrowRight, Hash, X } from 'lucide-react';
 import { Card } from '../../components/ui/Card';
 import { Skeleton } from '../../components/ui/Skeleton';
 import { cn } from '../../lib/cn';
@@ -112,6 +112,10 @@ export function SuggestionsPanel({ onSelectKeyword }: SuggestionsPanelProps) {
                   key={`${s.source}-${s.term}`}
                   suggestion={s}
                   onClick={() => onSelectKeyword(s.term)}
+                  onExclude={async () => {
+                    await window.api.keywords.excludeSuggestion(s.term);
+                    refresh();
+                  }}
                 />
               ))}
             </div>
@@ -159,9 +163,11 @@ function TabButton({
 function SuggestionItem({
   suggestion,
   onClick,
+  onExclude,
 }: {
   suggestion: KeywordSuggestion;
   onClick: () => void;
+  onExclude: () => void;
 }) {
   const sourceLabel = suggestion.source === 'tag' ? 'tag' : 'título';
   const sourceClass =
@@ -170,31 +176,45 @@ function SuggestionItem({
       : 'bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300';
 
   return (
-    <button
-      onClick={onClick}
-      className="group flex w-full items-center gap-3 rounded-lg border border-zinc-200 p-2.5 text-left transition-colors hover:border-zinc-400 hover:bg-zinc-50 dark:border-zinc-800 dark:hover:border-zinc-600 dark:hover:bg-zinc-800/40"
-    >
-      <Hash className="h-4 w-4 shrink-0 text-zinc-400" />
-      <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-medium">{suggestion.term}</p>
-        <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-zinc-500">
-          <span className={cn('rounded-full px-1.5 py-0.5 text-[10px]', sourceClass)}>
-            {sourceLabel}
-          </span>
-          <span>
-            {suggestion.occurrences} vídeo{suggestion.occurrences > 1 ? 's' : ''}
-          </span>
-          <span>{formatCompact(suggestion.totalViews)} views totais</span>
-          {suggestion.shortsCount > 0 && suggestion.longCount > 0 && (
-            <span>
-              {suggestion.shortsCount} short{suggestion.shortsCount > 1 ? 's' : ''} ·{' '}
-              {suggestion.longCount} longo{suggestion.longCount > 1 ? 's' : ''}
+    <div className="group flex items-stretch gap-0 rounded-lg border border-zinc-200 transition-colors hover:border-zinc-400 hover:bg-zinc-50 dark:border-zinc-800 dark:hover:border-zinc-600 dark:hover:bg-zinc-800/40">
+      <button
+        onClick={onClick}
+        className="flex min-w-0 flex-1 items-center gap-3 p-2.5 text-left"
+        title="Verificar volume de busca"
+      >
+        <Hash className="h-4 w-4 shrink-0 text-zinc-400" />
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-medium">{suggestion.term}</p>
+          <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-zinc-500">
+            <span className={cn('rounded-full px-1.5 py-0.5 text-[10px]', sourceClass)}>
+              {sourceLabel}
             </span>
-          )}
+            <span>
+              {suggestion.occurrences} vídeo{suggestion.occurrences > 1 ? 's' : ''}
+            </span>
+            <span>{formatCompact(suggestion.totalViews)} views totais</span>
+            {suggestion.shortsCount > 0 && suggestion.longCount > 0 && (
+              <span>
+                {suggestion.shortsCount} short{suggestion.shortsCount > 1 ? 's' : ''} ·{' '}
+                {suggestion.longCount} longo{suggestion.longCount > 1 ? 's' : ''}
+              </span>
+            )}
+          </div>
         </div>
-      </div>
-      <ArrowRight className="h-4 w-4 shrink-0 text-zinc-400 opacity-0 transition-opacity group-hover:opacity-100" />
-    </button>
+        <ArrowRight className="h-4 w-4 shrink-0 text-zinc-400 opacity-0 transition-opacity group-hover:opacity-100" />
+      </button>
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          onExclude();
+        }}
+        title="Excluir desta lista (não voltará a aparecer)"
+        aria-label={`Excluir sugestão ${suggestion.term}`}
+        className="flex shrink-0 items-center justify-center px-2 text-zinc-400 opacity-0 transition-opacity hover:text-red-600 group-hover:opacity-100 dark:hover:text-red-400"
+      >
+        <X className="h-4 w-4" />
+      </button>
+    </div>
   );
 }
 

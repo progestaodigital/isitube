@@ -81,6 +81,8 @@ const api: IsitubeAPI = {
       ipcRenderer.invoke('keywords:generate-free-ideas', seed),
     getSuggestions: (): Promise<KeywordSuggestionsPayload> =>
       ipcRenderer.invoke('keywords:get-suggestions'),
+    excludeSuggestion: (term: string): Promise<void> =>
+      ipcRenderer.invoke('keywords:exclude-suggestion', term),
     testTrends: (): Promise<{ success: boolean; message: string }> =>
       ipcRenderer.invoke('keywords:test-trends'),
   },
