@@ -1,5 +1,6 @@
 import type { KeywordsEverywhereData } from '@shared/types';
 import type { KeywordSourceProvider } from './types';
+import { recordFailure, recordSuccess } from '../../telemetry/providers';
 
 const API_URL = 'https://api.keywordseverywhere.com/v1/get_keyword_data';
 
@@ -22,24 +23,32 @@ export class KeywordsEverywhereRealProvider
     formData.append('dataSource', 'gkp');
     formData.append('kw[]', term);
 
-    const res = await fetch(API_URL, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${this.apiKey}` },
-      body: formData,
-    });
+    let json: any;
+    try {
+      const res = await fetch(API_URL, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${this.apiKey}` },
+        body: formData,
+      });
 
-    if (!res.ok) {
-      let msg = `Keywords Everywhere API error ${res.status}`;
-      try {
-        const body = await res.json();
-        if (body?.message) msg = body.message;
-      } catch {
-        /* swallow non-JSON */
+      if (!res.ok) {
+        let msg = `Keywords Everywhere API error ${res.status}`;
+        try {
+          const body = await res.json();
+          if (body?.message) msg = body.message;
+        } catch {
+          /* swallow non-JSON */
+        }
+        throw new Error(msg);
       }
-      throw new Error(msg);
+
+      json = await res.json();
+      recordSuccess('keywords-everywhere');
+    } catch (err) {
+      recordFailure('keywords-everywhere', err);
+      throw err;
     }
 
-    const json = await res.json();
     const data = json?.data?.[0];
     if (!data) throw new Error('Keywords Everywhere não retornou dados pra esse termo.');
 

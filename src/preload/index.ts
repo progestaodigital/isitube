@@ -23,6 +23,7 @@ import type {
   KeywordSourceStatuses,
   KeywordSuggestionsPayload,
   LicenseInfo,
+  ProviderSnapshot,
   QuotaSnapshot,
   BackupExportResult,
   BackupImportResult,
@@ -216,6 +217,10 @@ const api: IsitubeAPI = {
 
   quota: {
     list: (): Promise<QuotaSnapshot[]> => ipcRenderer.invoke('quota:list'),
+  },
+
+  health: {
+    list: (): Promise<ProviderSnapshot[]> => ipcRenderer.invoke('health:list'),
   },
 
   dialog: {

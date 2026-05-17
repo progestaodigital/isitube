@@ -1,6 +1,7 @@
 import type { FetchedVideoMetadata, VideoMetadataProvider } from './types';
 import type { ExternalApiConfig } from '../../external/types';
 import { fetchWithQuotaTracking } from '../../external/quota';
+import { recordFailure, recordSuccess } from '../../telemetry/providers';
 
 const DIRECT_BASE = 'https://www.googleapis.com/youtube/v3';
 
@@ -59,19 +60,26 @@ export class YouTubeRealMetadataProvider implements VideoMetadataProvider {
     const url = this.buildUrl(path);
     const headers = this.buildHeaders();
 
-    const res = await fetchWithQuotaTracking('youtube', url, { headers });
-    if (!res.ok) {
-      let msg = `YouTube API error ${res.status}`;
-      try {
-        const body = await res.json();
-        if (body?.error?.message) msg = body.error.message;
-      } catch {
-        /* swallow */
+    let data: any;
+    try {
+      const res = await fetchWithQuotaTracking('youtube', url, { headers });
+      if (!res.ok) {
+        let msg = `YouTube API error ${res.status}`;
+        try {
+          const body = await res.json();
+          if (body?.error?.message) msg = body.error.message;
+        } catch {
+          /* swallow */
+        }
+        throw new Error(msg);
       }
-      throw new Error(msg);
+      data = await res.json();
+      recordSuccess('youtube-data-api');
+    } catch (err) {
+      recordFailure('youtube-data-api', err);
+      throw err;
     }
 
-    const data = await res.json();
     const item = data.items?.[0];
     if (!item) throw new Error('Vídeo não encontrado na API do YouTube.');
 

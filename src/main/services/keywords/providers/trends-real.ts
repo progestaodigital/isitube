@@ -1,6 +1,7 @@
 import googleTrends from 'google-trends-api';
 import type { TrendsData, TrendsTimeSeriesPoint } from '@shared/types';
 import type { KeywordSourceProvider } from './types';
+import { recordFailure, recordSuccess } from '../../telemetry/providers';
 
 /**
  * Real Google Trends provider — uses the unofficial google-trends-api npm
@@ -9,12 +10,45 @@ import type { KeywordSourceProvider } from './types';
  * Trends has aggressive rate limiting (~quota of ~ 1 req/sec, hard 429 if
  * exceeded). We swallow 429s as "unavailable" so the keyword score keeps
  * computing with the other sources.
+ *
+ * **Cooldown** (10.C): após qualquer falha que cheire a rate limit,
+ * suspendemos chamadas por COOLDOWN_AFTER_429_MS minutos. Bater de novo
+ * com 429 só piora o ban; melhor ficar em silêncio e voltar gentilmente.
  */
+const COOLDOWN_AFTER_429_MS = 5 * 60 * 1000;
+let cooldownUntilMs = 0;
+
+function isRateLimitError(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err);
+  return /429|rate.?limit|too many|unavailable/i.test(msg);
+}
+
 export class GoogleTrendsRealProvider implements KeywordSourceProvider<TrendsData> {
   readonly source = 'trends' as const;
   readonly name = 'Google Trends';
 
   async fetch(term: string): Promise<TrendsData> {
+    if (Date.now() < cooldownUntilMs) {
+      const remainingSec = Math.ceil((cooldownUntilMs - Date.now()) / 1000);
+      throw new Error(
+        `Trends em cooldown (rate limit recente). Tente novamente em ${remainingSec}s.`
+      );
+    }
+
+    try {
+      const result = await this.fetchInner(term);
+      recordSuccess('trends');
+      return result;
+    } catch (err) {
+      recordFailure('trends', err);
+      if (isRateLimitError(err)) {
+        cooldownUntilMs = Date.now() + COOLDOWN_AFTER_429_MS;
+      }
+      throw err;
+    }
+  }
+
+  private async fetchInner(term: string): Promise<TrendsData> {
     const startTime = new Date(Date.now() - 365 * 86_400_000);
 
     const interestRaw = await googleTrends.interestOverTime({

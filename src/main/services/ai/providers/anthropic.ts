@@ -9,6 +9,7 @@ import type {
 } from './types';
 import type { ExternalApiConfig } from '../../external/types';
 import { createTrackingFetch } from '../../external/quota';
+import { recordFailure, recordSuccess } from '../../telemetry/providers';
 
 const DEFAULT_MODEL = 'claude-sonnet-4-6';
 
@@ -61,11 +62,13 @@ export class AnthropicProvider implements AIProvider {
         prompt,
         maxOutputTokens: maxTokens ?? 1024,
       });
+      recordSuccess('anthropic');
       return {
         text: result.text,
         usage: usageFrom(result.usage),
       };
     } catch (err) {
+      recordFailure('anthropic', err);
       logApiError(err);
       throw err;
     }
@@ -98,11 +101,13 @@ export class AnthropicProvider implements AIProvider {
       });
 
       const parsed = parseJsonLeniently<T>(result.text);
+      recordSuccess('anthropic');
       return {
         object: parsed,
         usage: usageFrom(result.usage),
       };
     } catch (err) {
+      recordFailure('anthropic', err);
       logApiError(err);
       throw err;
     }

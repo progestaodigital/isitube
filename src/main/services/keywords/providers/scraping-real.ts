@@ -1,6 +1,7 @@
 import ytsr from '@distube/ytsr';
 import type { ScrapingData, TopResult } from '@shared/types';
 import type { KeywordSourceProvider } from './types';
+import { recordFailure, recordSuccess } from '../../telemetry/providers';
 
 /**
  * Real "scraping" provider — uses @distube/ytsr to fetch the YouTube search
@@ -17,12 +18,19 @@ export class ScrapingRealProvider implements KeywordSourceProvider<ScrapingData>
   readonly name = 'Scraping próprio';
 
   async fetch(term: string): Promise<ScrapingData> {
-    const result = await ytsr(term, {
-      gl: 'BR',
-      hl: 'pt',
-      type: 'video',
-      safeSearch: false,
-    });
+    let result;
+    try {
+      result = await ytsr(term, {
+        gl: 'BR',
+        hl: 'pt',
+        type: 'video',
+        safeSearch: false,
+      });
+      recordSuccess('youtube-scraping');
+    } catch (err) {
+      recordFailure('youtube-scraping', err);
+      throw err;
+    }
 
     const items = (result.items ?? []).slice(0, 10);
     if (items.length === 0) {

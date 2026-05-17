@@ -12,6 +12,7 @@ import { registerBackupHandlers } from './backup';
 import { registerCategoriesHandlers } from './categories';
 import { registerUpdatesHandlers } from './updates';
 import { registerQuotaHandlers } from './quota';
+import { registerHealthHandlers } from './health';
 
 export function registerIpcHandlers(): void {
   registerSettingsHandlers();
@@ -28,4 +29,5 @@ export function registerIpcHandlers(): void {
   registerCategoriesHandlers();
   registerUpdatesHandlers();
   registerQuotaHandlers();
+  registerHealthHandlers();
 }

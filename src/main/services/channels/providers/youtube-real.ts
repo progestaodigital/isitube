@@ -7,6 +7,7 @@ import type {
 } from './types';
 import type { ExternalApiConfig } from '../../external/types';
 import { fetchWithQuotaTracking } from '../../external/quota';
+import { recordFailure, recordSuccess } from '../../telemetry/providers';
 
 const DIRECT_BASE = 'https://www.googleapis.com/youtube/v3';
 const VIDEOS_BATCH = 50; // YouTube videos.list max ids per request
@@ -303,18 +304,25 @@ export class YouTubeRealProvider implements ChannelProvider {
   private async fetchJSON(path: string): Promise<any> {
     const url = this.buildUrl(path);
     const headers = this.buildHeaders();
-    const res = await fetchWithQuotaTracking('youtube', url, { headers });
-    if (!res.ok) {
-      let msg = `YouTube API error ${res.status}`;
-      try {
-        const body = await res.json();
-        if (body?.error?.message) msg = body.error.message;
-      } catch {
-        /* swallow non-JSON body */
+    try {
+      const res = await fetchWithQuotaTracking('youtube', url, { headers });
+      if (!res.ok) {
+        let msg = `YouTube API error ${res.status}`;
+        try {
+          const body = await res.json();
+          if (body?.error?.message) msg = body.error.message;
+        } catch {
+          /* swallow non-JSON body */
+        }
+        throw new Error(msg);
       }
-      throw new Error(msg);
+      const json = await res.json();
+      recordSuccess('youtube-data-api');
+      return json;
+    } catch (err) {
+      recordFailure('youtube-data-api', err);
+      throw err;
     }
-    return res.json();
   }
 
   private buildUrl(path: string): string {

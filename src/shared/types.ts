@@ -369,6 +369,35 @@ export type LicenseActionResult = {
 };
 
 // =============================================================================
+// Telemetria leve por provider externo (alimenta a tela "Status das integrações")
+// =============================================================================
+
+export type ProviderKey =
+  | 'anthropic'
+  | 'youtube-data-api'
+  | 'youtube-scraping'
+  | 'youtube-transcript'
+  | 'youtube-autocomplete'
+  | 'trends'
+  | 'keywords-everywhere'
+  | 'isipanel-validate'
+  | 'github';
+
+export type ProviderSnapshot = {
+  key: ProviderKey;
+  /** ISO timestamp da última chamada bem-sucedida. */
+  lastSuccessAt: string | null;
+  /** ISO timestamp da última falha. */
+  lastErrorAt: string | null;
+  /** Mensagem do último erro (truncada em 200 chars). */
+  lastErrorMessage: string | null;
+  /** Total de chamadas desde o boot do app. */
+  totalCalls: number;
+  /** Quantas dessas falharam. */
+  totalFailures: number;
+};
+
+// =============================================================================
 // Proxy quota tracking (Plano Iniciante via isipanel proxy)
 // =============================================================================
 
@@ -555,6 +584,10 @@ export type IsitubeAPI = {
   quota: {
     /** Latest cached quota snapshots (one per API; absent until first proxy call). */
     list: () => Promise<QuotaSnapshot[]>;
+  };
+  health: {
+    /** Snapshot in-memory dos providers externos desde o boot. */
+    list: () => Promise<ProviderSnapshot[]>;
   };
   schedule: {
     get: () => Promise<ScheduleInfo | null>;

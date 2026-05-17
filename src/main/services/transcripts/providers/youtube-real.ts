@@ -1,6 +1,7 @@
 import { YoutubeTranscript } from 'youtube-transcript';
 import type { TranscriptSegment } from '@shared/types';
 import type { FetchedTranscript, TranscriptProvider } from './types';
+import { recordFailure, recordSuccess } from '../../telemetry/providers';
 
 /**
  * Real transcript provider — uses the `youtube-transcript` npm package which
@@ -24,12 +25,16 @@ export class YouTubeRealTranscriptProvider implements TranscriptProvider {
       raw = (await YoutubeTranscript.fetchTranscript(youtubeId, {
         lang: 'pt',
       })) as Array<{ text: string; offset: number; duration: number; lang?: string }>;
+      recordSuccess('youtube-transcript');
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      // Common "no transcript" error from the lib.
+      // "Sem legendas" não é erro de integração — é estado natural do vídeo.
+      // Conta como sucesso (a chamada respondeu corretamente "indisponível").
       if (/transcript|captions|disabled/i.test(msg)) {
+        recordSuccess('youtube-transcript');
         return { status: 'unavailable', language: null, segments: [] };
       }
+      recordFailure('youtube-transcript', err);
       throw err;
     }
 

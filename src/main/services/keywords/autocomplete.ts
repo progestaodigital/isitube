@@ -13,6 +13,8 @@
 // estável há vários anos. Se quebrar, basta restaurar pro mock sem outras
 // mudanças.
 
+import { recordFailure, recordSuccess } from '../telemetry/providers';
+
 const REAL_URL = 'https://suggestqueries.google.com/complete/search';
 const FETCH_TIMEOUT_MS = 1500;
 const MAX_SUGGESTIONS = 8;
@@ -38,9 +40,12 @@ export async function autocomplete(prefix: string): Promise<string[]> {
 
   try {
     const real = await fetchRealAutocomplete(trimmed);
-    if (real.length > 0) return real;
-  } catch {
-    // qualquer erro → cai pro fallback silenciosamente
+    if (real.length > 0) {
+      recordSuccess('youtube-autocomplete');
+      return real;
+    }
+  } catch (err) {
+    recordFailure('youtube-autocomplete', err);
   }
 
   return FALLBACK_SUFFIXES.slice(0, 6).map((s) => `${trimmed} ${s}`);
