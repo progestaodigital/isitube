@@ -6,6 +6,7 @@ import { TrendsSection } from './settings/TrendsSection';
 import { KeywordSourcesSection } from './settings/KeywordSourcesSection';
 import { ChannelsSection } from './settings/ChannelsSection';
 import { LicenseSection } from './settings/LicenseSection';
+import { HealthSection } from './settings/HealthSection';
 import { GeneralSection } from './settings/GeneralSection';
 import { DataSection } from './settings/DataSection';
 import { BackupSection } from './settings/BackupSection';
@@ -47,6 +48,7 @@ export function SettingsPage() {
       <ChannelsSection />
       <GeneralSection />
       <BackupSection />
+      <HealthSection />
       <DataSection />
 
       {isPro && <ProTipBanner />}
