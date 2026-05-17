@@ -4,11 +4,39 @@ import type {
   ChannelTimeSeriesPayload,
   EvergreenFilters,
   EvergreenVideo,
+  VideoType,
 } from '@shared/types';
 
 const DEFAULT_DAYS = 30;
 const DEFAULT_EVERGREEN_MIN_AGE_DAYS = 30;
 const DEFAULT_EVERGREEN_LOOKBACK_DAYS = 30;
+
+// Match channels/index.ts: vídeos <=180s contam como Shorts. Mantemos uma
+// cópia local pra evitar import cruzado (analytics não deve depender do
+// service principal — único ponto de uso é o filtro de tipo do evergreen).
+const SHORTS_MAX_DURATION_SEC = 180;
+
+/**
+ * In-memory video-type filter. Aplicado APÓS o cálculo do evergreen porque
+ * o baseline do canal (média de views/dia) é melhor representado quando
+ * inclui todos os formatos — restringir antes distorceria a comparação.
+ */
+function matchesVideoType(
+  durationSec: number | null,
+  videoType: VideoType | undefined
+): boolean {
+  if (!videoType || videoType === 'all') return true;
+  if (videoType === 'shorts') {
+    return durationSec !== null && durationSec > 0 && durationSec <= SHORTS_MAX_DURATION_SEC;
+  }
+  if (videoType === 'long') {
+    return durationSec !== null && durationSec > SHORTS_MAX_DURATION_SEC;
+  }
+  if (videoType === 'unknown') {
+    return durationSec === null || durationSec === 0;
+  }
+  return true;
+}
 
 // =============================================================================
 // Channel time series — drives the comparative charts
@@ -272,6 +300,11 @@ export async function getEvergreenVideos(
       const isEvergreen = consecutive >= minConsecutive;
       if (!isEvergreen) continue;
 
+      // Type filter aplicado AQUI (antes do push) — calcular baseline com
+      // todos os tipos e só depois restringir o resultado, mantendo a
+      // comparação justa contra a média do canal.
+      if (!matchesVideoType(cv.raw.durationSec, filters.videoType)) continue;
+
       evergreen.push({
         id: cv.raw.id,
         youtubeId: cv.raw.youtubeId,
@@ -314,8 +347,8 @@ export async function getEvergreenVideos(
     );
   }
 
-  // Apply title filter and video-type filter (kept here because the renderer
-  // expects them to work via this same query path).
+  // Filtro de tipo já foi aplicado no loop acima (antes do push). Sobra o
+  // de título, que opera sobre o resultado final.
   let filtered = evergreen;
   if (filters.titleQuery) {
     const q = filters.titleQuery.toLowerCase();
