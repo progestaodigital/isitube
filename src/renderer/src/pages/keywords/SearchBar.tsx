@@ -6,10 +6,24 @@ import { Button } from '../../components/ui/Button';
 interface SearchBarProps {
   onSearch: (term: string) => void;
   busy?: boolean;
+  /** Optional external value — when changed (e.g., user picked an idea above)
+   *  the input syncs to this term. The internal state continues to drive
+   *  typing thereafter. */
+  currentTerm?: string;
 }
 
-export function SearchBar({ onSearch, busy }: SearchBarProps) {
+export function SearchBar({ onSearch, busy, currentTerm }: SearchBarProps) {
   const [value, setValue] = useState('');
+
+  // Sync external term changes into the input. Skipped when the parent passes
+  // the same term twice in a row (e.g., user re-clicked the same idea) —
+  // useState's setter dedupes by reference.
+  useEffect(() => {
+    if (currentTerm !== undefined && currentTerm !== value) {
+      setValue(currentTerm);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentTerm]);
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [open, setOpen] = useState(false);
   const [highlight, setHighlight] = useState(-1);

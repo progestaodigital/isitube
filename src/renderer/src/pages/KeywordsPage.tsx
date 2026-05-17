@@ -8,6 +8,7 @@ import { KeywordResultCard } from './keywords/KeywordResultCard';
 import { HistoryList } from './keywords/HistoryList';
 import { HelpDialog } from './keywords/HelpDialog';
 import { SuggestionsPanel } from './keywords/SuggestionsPanel';
+import { IdeaGenerator } from '../components/keywords/IdeaGenerator';
 
 export function KeywordsPage() {
   const [busy, setBusy] = useState(false);
@@ -16,6 +17,7 @@ export function KeywordsPage() {
   const [history, setHistory] = useState<KeywordHistoryItem[]>([]);
   const [statuses, setStatuses] = useState<KeywordSourceStatuses | null>(null);
   const [helpOpen, setHelpOpen] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
 
   const refreshHistory = useCallback(async () => {
     setHistory(await window.api.keywords.history(20));
@@ -34,6 +36,7 @@ export function KeywordsPage() {
     async (term: string, forceRefresh = false) => {
       setBusy(true);
       setError(null);
+      setSearchTerm(term);
       try {
         const res = await window.api.keywords.search(term, { forceRefresh });
         setResult(res);
@@ -45,6 +48,15 @@ export function KeywordsPage() {
       }
     },
     [refreshHistory]
+  );
+
+  // Click numa ideia gerada (chip ou card) → preenche o campo de busca e
+  // dispara a análise. O `runSearch` já atualiza `searchTerm` internamente.
+  const handlePickIdea = useCallback(
+    (term: string) => {
+      runSearch(term);
+    },
+    [runSearch]
   );
 
   const enabledMap = statuses
@@ -76,8 +88,15 @@ export function KeywordsPage() {
 
       <SuggestionsPanel onSelectKeyword={(term) => runSearch(term)} />
 
+      <IdeaGenerator onPickIdea={handlePickIdea} />
+
       <Card>
-        <SearchBar onSearch={(term) => runSearch(term)} busy={busy} />
+        <h2 className="mb-4 text-lg font-semibold">Verificar volume de busca</h2>
+        <SearchBar
+          onSearch={(term) => runSearch(term)}
+          busy={busy}
+          currentTerm={searchTerm}
+        />
         <div className="mt-4">
           <SourceStatusBar result={result} enabled={enabledMap} />
         </div>
