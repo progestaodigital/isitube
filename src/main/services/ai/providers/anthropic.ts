@@ -26,16 +26,22 @@ export class AnthropicProvider implements AIProvider {
   readonly name = 'anthropic' as const;
   readonly defaultModel: string;
   private readonly client: ReturnType<typeof createAnthropic>;
+  private readonly mode: 'direct' | 'proxy';
 
   constructor(config: ExternalApiConfig, modelId?: string | null) {
+    this.mode = config.mode;
     if (config.mode === 'proxy') {
       this.client = createAnthropic({
         apiKey: config.licenseKey,
         baseURL: config.baseUrl,
         fetch: createTrackingFetch('anthropic'),
       });
+      console.log(
+        `[anthropic] proxy mode constructed: baseURL=${config.baseUrl} defaultModel=${modelId || DEFAULT_MODEL}`
+      );
     } else {
       this.client = createAnthropic({ apiKey: config.apiKey });
+      console.log(`[anthropic] direct mode constructed: defaultModel=${modelId || DEFAULT_MODEL}`);
     }
     this.defaultModel = modelId || DEFAULT_MODEL;
   }
@@ -46,17 +52,23 @@ export class AnthropicProvider implements AIProvider {
     model,
     maxTokens,
   }: GenerateTextArgs): Promise<GenerateTextResult> {
-    const result = await generateText({
-      model: this.modelFor(model) as LanguageModel,
-      system,
-      prompt,
-      maxOutputTokens: maxTokens ?? 1024,
-    });
-
-    return {
-      text: result.text,
-      usage: usageFrom(result.usage),
-    };
+    const effectiveModel = model || this.defaultModel;
+    console.log(`[anthropic] generateText mode=${this.mode} model=${effectiveModel}`);
+    try {
+      const result = await generateText({
+        model: this.modelFor(model) as LanguageModel,
+        system,
+        prompt,
+        maxOutputTokens: maxTokens ?? 1024,
+      });
+      return {
+        text: result.text,
+        usage: usageFrom(result.usage),
+      };
+    } catch (err) {
+      logApiError(err);
+      throw err;
+    }
   }
 
   async generateJSON<T>({
@@ -74,22 +86,57 @@ export class AnthropicProvider implements AIProvider {
       'IMPORTANTE: Responda APENAS com JSON válido. Sem markdown (não use ```), sem prosa antes ou depois. Apenas o objeto JSON puro, começando com { ou [.';
     const finalSystem = system ? `${system}\n\n${jsonInstruction}` : jsonInstruction;
 
-    const result = await generateText({
-      model: this.modelFor(model) as LanguageModel,
-      system: finalSystem,
-      prompt,
-      maxOutputTokens: maxTokens ?? 2048,
-    });
+    const effectiveModel = model || this.defaultModel;
+    console.log(`[anthropic] generateJSON mode=${this.mode} model=${effectiveModel}`);
 
-    const parsed = parseJsonLeniently<T>(result.text);
-    return {
-      object: parsed,
-      usage: usageFrom(result.usage),
-    };
+    try {
+      const result = await generateText({
+        model: this.modelFor(model) as LanguageModel,
+        system: finalSystem,
+        prompt,
+        maxOutputTokens: maxTokens ?? 2048,
+      });
+
+      const parsed = parseJsonLeniently<T>(result.text);
+      return {
+        object: parsed,
+        usage: usageFrom(result.usage),
+      };
+    } catch (err) {
+      logApiError(err);
+      throw err;
+    }
   }
 
   private modelFor(modelId?: string) {
     return this.client(modelId || this.defaultModel);
+  }
+}
+
+/**
+ * Diagnostic: capture AI SDK error detail (status + body + url) so 403s from
+ * the isipanel proxy don't surface as just "Forbidden" with no hint about
+ * which proxy rule rejected the call. Temporary while we shake out 9.A.3
+ * integration issues; safe to leave in (only fires on errors).
+ */
+function logApiError(err: unknown): void {
+  if (!err || typeof err !== 'object') return;
+  const e = err as Record<string, unknown>;
+  console.error('[anthropic] API error:', e.name ?? 'unknown', e.message);
+  if ('statusCode' in e) console.error('  statusCode:', e.statusCode);
+  if ('url' in e) console.error('  url:', e.url);
+  if ('responseBody' in e) console.error('  responseBody:', e.responseBody);
+  if ('responseHeaders' in e) {
+    const h = e.responseHeaders as Record<string, string> | undefined;
+    if (h) {
+      // Strip noisy/standard headers; keep the X-Quota-* + content-type for context.
+      const interesting = ['content-type', 'x-quota-used', 'x-quota-remaining', 'x-quota-period'];
+      const summary: Record<string, string> = {};
+      for (const k of interesting) {
+        if (h[k]) summary[k] = h[k];
+      }
+      console.error('  responseHeaders:', summary);
+    }
   }
 }
 
