@@ -5,11 +5,10 @@ import { getActivePlan } from '../license';
 import { enrichKeyword, type Providers, type SourceEnabledMap } from './enricher';
 import { findFreshCachedSearch, persistSearch } from './cache';
 import { autocomplete } from './autocomplete';
-// Mock providers — used as fallback when real providers can't be selected.
-import { ScrapingProvider } from './providers/scraping';
+// KE mock continua como fallback quando o usuário Pro não tem chave BYOK
+// configurada. Scraping e Trends sempre usam os providers reais — os mocks
+// originais foram deletados na Fase 10.B (eram dead code).
 import { KeywordsEverywhereProvider } from './providers/keywords-everywhere';
-import { TrendsProvider } from './providers/trends';
-// Real providers — selected when conditions are met (key valid, etc).
 import { ScrapingRealProvider } from './providers/scraping-real';
 import { KeywordsEverywhereRealProvider } from './providers/keywords-everywhere-real';
 import { GoogleTrendsRealProvider } from './providers/trends-real';
@@ -153,7 +152,3 @@ export async function listHistory(limit = 20): Promise<KeywordHistoryItem[]> {
 }
 
 export { autocomplete };
-
-// Used internally by free-ideas.ts so it can mirror our mock/real selection.
-void ScrapingProvider;
-void TrendsProvider;

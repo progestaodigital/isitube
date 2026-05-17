@@ -1,5 +1,5 @@
 import { autocomplete } from './autocomplete';
-import { TrendsProvider } from './providers/trends';
+import { GoogleTrendsRealProvider } from './providers/trends-real';
 import type { FreeIdeaSource, FreeKeywordIdea, FreeKeywordIdeasResult } from '@shared/types';
 
 const MODIFIER_PREFIXES = [
@@ -10,7 +10,10 @@ const MODIFIER_PREFIXES = [
   'curso de',
 ];
 
-const trendsProvider = new TrendsProvider();
+// Free ideas usa Trends real. Quando o endpoint do Trends rate-limita (429),
+// o catch em volta da chamada engole o erro e segue só com autocomplete —
+// "best-effort" mantém o comportamento.
+const trendsProvider = new GoogleTrendsRealProvider();
 
 /**
  * Free (no-AI) keyword idea generator. Combines:

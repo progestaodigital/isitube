@@ -1,7 +1,6 @@
 import { dialog } from 'electron';
 import { writeFile } from 'node:fs/promises';
 import { getPrisma } from '../../db';
-import { YouTubeMockTranscriptProvider } from './providers/youtube-mock';
 import { YouTubeRealTranscriptProvider } from './providers/youtube-real';
 import type { TranscriptProvider } from './providers/types';
 import type {
@@ -13,11 +12,11 @@ import type {
   VideoTranscript,
 } from '@shared/types';
 
-// Transcripts don't need a credential — youtube-transcript scrapes the public
-// caption tracks. We default to the real provider; if it fails per-call, the
-// service catches the error and persists `unavailable`. Mock kept for tests.
+// Transcripts não precisam de credencial — o pacote youtube-transcript faz
+// scraping das caption tracks públicas. Se a chamada por vídeo falhar, o
+// service captura e persiste `unavailable`. Mock antigo deletado na Fase 10.B
+// (era dead code; void hack de import existia só pra silenciar o lint).
 const provider: TranscriptProvider = new YouTubeRealTranscriptProvider();
-void YouTubeMockTranscriptProvider;
 
 function parseSegments(json: string | null): TranscriptSegment[] {
   if (!json) return [];
