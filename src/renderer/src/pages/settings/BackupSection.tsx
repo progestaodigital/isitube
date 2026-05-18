@@ -257,7 +257,7 @@ export function BackupSection() {
               provider="github"
               label="GitHub Personal Access Token"
               placeholder="ghp_..."
-              helpUrl="https://github.com/settings/tokens"
+              helpTopic="api-github-pat"
             />
 
             <div>

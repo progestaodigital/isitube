@@ -11,7 +11,7 @@ export function KeywordsEverywhereSection() {
         provider="keywords_everywhere"
         label="API Key do Keywords Everywhere"
         placeholder="..."
-        helpUrl="https://keywordseverywhere.com/manage-api-key.html"
+        helpTopic="api-ke"
       />
 
       <div className="rounded-lg bg-zinc-100 p-3 text-xs text-zinc-600 dark:bg-zinc-800/50 dark:text-zinc-400">

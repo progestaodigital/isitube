@@ -11,7 +11,7 @@ export function YouTubeSection() {
         provider="youtube"
         label="API Key do Google Cloud (YouTube Data API v3)"
         placeholder="AIza..."
-        helpUrl="https://console.cloud.google.com/apis/credentials"
+        helpTopic="api-youtube"
       />
 
       <div className="rounded-lg bg-zinc-100 p-3 text-xs text-zinc-600 dark:bg-zinc-800/50 dark:text-zinc-400">

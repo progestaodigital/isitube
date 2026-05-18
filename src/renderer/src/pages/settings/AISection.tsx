@@ -51,7 +51,7 @@ export function AISection() {
         provider="anthropic"
         label="API Key da Anthropic"
         placeholder="sk-ant-..."
-        helpUrl="https://console.anthropic.com/settings/keys"
+        helpTopic="api-anthropic"
       />
 
       <div className="rounded-lg bg-zinc-100 p-3 text-xs text-zinc-600 dark:bg-zinc-800/50 dark:text-zinc-400">

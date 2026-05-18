@@ -1,15 +1,22 @@
 import { useEffect, useState } from 'react';
-import { Eye, EyeOff, ExternalLink } from 'lucide-react';
+import { Eye, EyeOff, ExternalLink, HelpCircle } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { StatusDot } from '../../components/ui/StatusDot';
+import { useRouterStore } from '../../stores/router';
+import { useHelpStore, type HelpTopic } from '../../stores/help';
 import type { CredentialProvider, CredentialStatus } from '@shared/types';
 
 interface CredentialFieldProps {
   provider: CredentialProvider;
   label: string;
   placeholder?: string;
+  /** URL externa pra "Como obter sua chave?". Usado quando helpTopic não está definido. */
   helpUrl?: string;
+  /** Tópico do wiki interno. Quando definido, sobrescreve helpUrl — o link
+   *  "Como obter sua chave?" navega pra Ajuda → tópico específico em vez de
+   *  abrir uma página externa. Mais contexto, menos saltos. */
+  helpTopic?: HelpTopic;
 }
 
 type Feedback = { kind: 'ok' | 'err'; text: string } | null;
@@ -19,7 +26,10 @@ export function CredentialField({
   label,
   placeholder = 'sk-...',
   helpUrl,
+  helpTopic,
 }: CredentialFieldProps) {
+  const navigate = useRouterStore((s) => s.navigate);
+  const setHelpTopic = useHelpStore((s) => s.setTopic);
   const [value, setValue] = useState('');
   const [showing, setShowing] = useState(false);
   const [status, setStatus] = useState<CredentialStatus | null>(null);
@@ -126,7 +136,18 @@ export function CredentialField({
             </Button>
           </>
         )}
-        {helpUrl && (
+        {helpTopic ? (
+          <button
+            onClick={() => {
+              setHelpTopic(helpTopic);
+              navigate('help');
+            }}
+            className="ml-auto inline-flex items-center gap-1 text-xs text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300"
+          >
+            Como obter sua chave?
+            <HelpCircle className="h-3 w-3" />
+          </button>
+        ) : helpUrl ? (
           <a
             href={helpUrl}
             target="_blank"
@@ -136,7 +157,7 @@ export function CredentialField({
             Como obter sua chave?
             <ExternalLink className="h-3 w-3" />
           </a>
-        )}
+        ) : null}
       </div>
 
       {lastValidated && (
