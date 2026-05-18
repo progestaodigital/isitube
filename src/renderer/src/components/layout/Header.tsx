@@ -2,6 +2,7 @@ import { Search, Sun, Moon, Bell, User } from 'lucide-react';
 import { useThemeStore } from '../../stores/theme';
 import { useRouterStore } from '../../stores/router';
 import { UpdateBadge } from './UpdateBadge';
+import { UpdateRunIndicator } from './UpdateRunIndicator';
 import { PlanBadge } from '../license/PlanBadge';
 import { useLicense } from '../../hooks/useLicense';
 
@@ -24,6 +25,7 @@ export function Header() {
         </div>
       </div>
       <div className="flex items-center gap-1">
+        <UpdateRunIndicator />
         <UpdateBadge />
         {info && (
           <PlanBadge

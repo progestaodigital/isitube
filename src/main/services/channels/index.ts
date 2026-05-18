@@ -7,6 +7,7 @@ import { getCredentialPlainText, getCredentialStatus } from '../credentials';
 import { setChannelCategories } from '../categories';
 import { getActiveLicenseKey, getActivePlan } from '../license';
 import { YOUTUBE_PROXY_BASE_URL } from '../external/endpoints';
+import { broadcastUpdateRunStarted } from './scheduler';
 import type {
   AddChannelResult,
   ChannelInfo,
@@ -582,6 +583,12 @@ export async function runUpdateAll(
       status: 'running',
     },
   });
+
+  // Sinaliza pro renderer que o run COMEÇOU. Importante pro UX: páginas
+  // que precisam mostrar "atualizando..." podem subscrever ao evento global
+  // em vez de depender do estado local do componente, que some quando o
+  // usuário navega pra outra página durante o run.
+  broadcastUpdateRunStarted(projectUpdateRun(run));
 
   // Bail out early if no real YouTube key is configured — there's nothing
   // useful we can do (mocks would just regenerate fake data over real channels).

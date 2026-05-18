@@ -130,6 +130,18 @@ export function broadcastUpdateRunCompleted(run: UpdateRunInfo): void {
   }
 }
 
+/**
+ * Sinaliza pra todas as janelas que uma execução de `runUpdateAll` ACABOU DE
+ * COMEÇAR. O renderer mantém um Zustand global escutando esses 2 eventos
+ * (started + completed) pra exibir indicador de "atualizando" de qualquer
+ * página, mesmo quando o usuário navega pra fora da Canais durante o run.
+ */
+export function broadcastUpdateRunStarted(run: UpdateRunInfo): void {
+  for (const win of BrowserWindow.getAllWindows()) {
+    win.webContents.send('events:update-run-started', run);
+  }
+}
+
 export function broadcastToast(payload: ToastPayload): void {
   for (const win of BrowserWindow.getAllWindows()) {
     win.webContents.send('events:toast', payload);

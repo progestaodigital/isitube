@@ -291,6 +291,13 @@ const api: IsitubeAPI = {
   },
 
   events: {
+    onUpdateRunStarted: (handler) => {
+      const listener = (_e: Electron.IpcRendererEvent, payload: UpdateRunInfo) => handler(payload);
+      ipcRenderer.on('events:update-run-started', listener);
+      return () => {
+        ipcRenderer.removeListener('events:update-run-started', listener);
+      };
+    },
     onUpdateRunCompleted: (handler) => {
       const listener = (_e: Electron.IpcRendererEvent, payload: UpdateRunInfo) => handler(payload);
       ipcRenderer.on('events:update-run-completed', listener);

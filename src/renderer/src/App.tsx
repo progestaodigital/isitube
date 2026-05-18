@@ -10,6 +10,7 @@ import { VideoDetailModal } from './pages/videos/VideoDetailModal';
 import { OnboardingModal } from './pages/onboarding/OnboardingModal';
 import { LicenseGateModal } from './components/license/LicenseGateModal';
 import { useLicense } from './hooks/useLicense';
+import { useUpdateRunStore } from './stores/updateRun';
 
 export function App() {
   const theme = useThemeStore((s) => s.theme);
@@ -35,6 +36,21 @@ export function App() {
     const off = window.api.events.onToast((payload) => showToast(payload));
     return off;
   }, [showToast]);
+
+  // Bridge update-run events para o store global. Subscrito uma vez aqui
+  // no App pra que páginas que vêm e vão (Canais, Home) leiam o estado
+  // atual via useUpdateRunStore sem perder track de uma execução que está
+  // rodando "em background" relativo ao renderer.
+  useEffect(() => {
+    const start = useUpdateRunStore.getState().start;
+    const complete = useUpdateRunStore.getState().complete;
+    const offStarted = window.api.events.onUpdateRunStarted((run) => start(run));
+    const offCompleted = window.api.events.onUpdateRunCompleted((run) => complete(run));
+    return () => {
+      offStarted();
+      offCompleted();
+    };
+  }, []);
 
   // Loading state: theme + license. Show a minimal splash so the chrome
   // doesn't flash before we know whether to show the gate or the app.

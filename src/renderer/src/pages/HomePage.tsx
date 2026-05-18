@@ -16,6 +16,7 @@ import {
 import { useRouterStore } from '../stores/router';
 import { useVideoDetailStore } from '../stores/videoDetail';
 import { useToastStore } from '../stores/toast';
+import { useUpdateRunStore } from '../stores/updateRun';
 import { IdeaGenerator } from '../components/keywords/IdeaGenerator';
 import type {
   ChannelInfo,
@@ -41,7 +42,9 @@ export function HomePage() {
   const showToast = useToastStore((s) => s.show);
 
   const [data, setData] = useState<DashboardData | null>(null);
-  const [updating, setUpdating] = useState(false);
+  // `updating` agora vem do store global — mantém o botão consistente quando
+  // o usuário sai/volta da página com um run rodando em background.
+  const updating = useUpdateRunStore((s) => s.isRunning);
   const [flaggedType, setFlaggedType] = useState<TopListVideoType>('long');
   const [evergreenType, setEvergreenType] = useState<TopListVideoType>('long');
 
@@ -75,7 +78,9 @@ export function HomePage() {
 
   async function handleUpdateAll() {
     if (updating) return;
-    setUpdating(true);
+    // O store global é atualizado pelos eventos main→renderer
+    // (`update-run-started` / `update-run-completed`). Não setamos
+    // updating local — o spinner reflete o estado real do run.
     try {
       const run = await window.api.channels.updateAll('manual');
       showToast({
@@ -87,8 +92,12 @@ export function HomePage() {
             : `${run.videosNew} novos vídeos · ${run.videosFlagged} sinalizados.`,
       });
       await refresh();
-    } finally {
-      setUpdating(false);
+    } catch (err) {
+      showToast({
+        kind: 'error',
+        title: 'Atualização falhou',
+        description: err instanceof Error ? err.message : String(err),
+      });
     }
   }
 

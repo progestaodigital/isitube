@@ -6,6 +6,7 @@ import { MissingKeyCTA } from '../components/ui/MissingKeyCTA';
 import { CategoryFilter } from '../components/categories/CategoryFilter';
 import { cn } from '../lib/cn';
 import { useToastStore } from '../stores/toast';
+import { useUpdateRunStore } from '../stores/updateRun';
 import { useCategories } from '../hooks/useCategories';
 import { isCredentialReady, useCredentialStatus } from '../hooks/useCredentialStatus';
 import { ChannelList } from './channels/ChannelList';
@@ -42,7 +43,10 @@ export function ChannelsPage() {
   const [categoryFilterIds, setCategoryFilterIds] = useState<string[]>([]);
   const [latestRun, setLatestRun] = useState<UpdateRunInfo | null>(null);
   const [schedule, setSchedule] = useState<ScheduleInfo | null>(null);
-  const [updating, setUpdating] = useState(false);
+  // `updating` agora vem do store global. Persiste através de navegação
+  // entre páginas — se o run começou em Canais e o usuário foi pra Home,
+  // ao voltar pra Canais o botão continua mostrando "Atualizando...".
+  const updating = useUpdateRunStore((s) => s.isRunning);
   const [backfillingAll, setBackfillingAll] = useState(false);
   const [removing, setRemoving] = useState<Set<string>>(new Set());
   const [addOpen, setAddOpen] = useState(false);
@@ -95,7 +99,9 @@ export function ChannelsPage() {
 
   async function handleUpdateAll() {
     if (updating) return;
-    setUpdating(true);
+    // O store global é atualizado pelos eventos main→renderer
+    // (`update-run-started` / `update-run-completed`). Não setamos
+    // updating local — o spinner reflete o estado real do run.
     try {
       const run = await window.api.channels.updateAll('manual');
       showToast({
@@ -108,8 +114,12 @@ export function ChannelsPage() {
             : `${run.videosNew} novos vídeos · ${run.videosFlagged} sinalizados.`,
       });
       await Promise.all([refreshChannels(), refreshFlagged(), refreshLastRun()]);
-    } finally {
-      setUpdating(false);
+    } catch (err) {
+      showToast({
+        kind: 'error',
+        title: 'Atualização falhou',
+        description: err instanceof Error ? err.message : String(err),
+      });
     }
   }
 

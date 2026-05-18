@@ -595,6 +595,7 @@ export type IsitubeAPI = {
     cancel: () => Promise<void>;
   };
   events: {
+    onUpdateRunStarted: (handler: (run: UpdateRunInfo) => void) => () => void;
     onUpdateRunCompleted: (handler: (run: UpdateRunInfo) => void) => () => void;
     onToast: (handler: (payload: ToastPayload) => void) => () => void;
   };
