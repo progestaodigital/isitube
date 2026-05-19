@@ -3,9 +3,6 @@ import {
   HelpCircle,
   Lock,
   Database,
-  Tv,
-  Sprout,
-  Lightbulb,
   Wand2,
   KeyRound,
   Activity,
@@ -25,7 +22,7 @@ import { useHelpStore, type HelpTopic } from '../stores/help';
 interface TopicDef {
   id: HelpTopic;
   title: string;
-  icon: typeof Tv;
+  icon: typeof Sparkles;
   body: (navigate: (v: 'home' | 'settings' | 'keywords' | 'channels') => void) => ReactNode;
 }
 
@@ -126,15 +123,6 @@ function useTopicGroups(): TopicGroup[] {
         { id: 'api-youtube', title: 'YouTube Data API', icon: Youtube, body: ApiYoutube },
         { id: 'api-ke', title: 'Keywords Everywhere', icon: Tag, body: ApiKeywordsEverywhere },
         { id: 'api-github-pat', title: 'GitHub (Backup)', icon: Github, body: ApiGithub },
-      ],
-    },
-    {
-      title: 'Como o isiTube funciona',
-      items: [
-        { id: 'channels-outliers', title: 'Canais e outliers', icon: Tv, body: ChannelsOutliers },
-        { id: 'evergreen', title: 'Vídeos evergreen', icon: Sprout, body: Evergreen },
-        { id: 'keyword-score', title: 'Score de oportunidade', icon: Lightbulb, body: KeywordScore },
-        { id: 'keyword-suggestions', title: 'Sugestões de keywords', icon: Wand2, body: KeywordSuggestions },
       ],
     },
     {
@@ -487,123 +475,6 @@ function ApiGithub(navigate: Nav) {
         seguro porque você escopa o token a UM repo específico em vez de "todos os repos da sua
         conta". Se vazar, dano é mínimo.
       </Callout>
-    </Body>
-  );
-}
-
-function ChannelsOutliers(navigate: Nav) {
-  return (
-    <Body>
-      <P>
-        "Outlier" = vídeo que rendeu <b>significativamente acima da média recente</b> do canal.
-        Útil pra identificar o que está performando bem AGORA.
-      </P>
-      <P>
-        <b>Cálculo:</b> média de views dos vídeos publicados nos últimos N dias (default 30).
-        Vídeo cuja view count for ≥ X% dessa média (default 150%) é sinalizado.
-      </P>
-      <UL>
-        <LI>
-          <b>Threshold</b> e <b>janela de coleta (lookback)</b> são ajustáveis em{' '}
-          <Link onClick={() => navigate('settings')}>Configurações → Canais</Link>.
-        </LI>
-        <LI>
-          Janela maior (90/180 dias) = média mais estável, menos sensível a picos isolados.
-        </LI>
-        <LI>
-          Threshold maior (200%/300%) = só destaca os vídeos que <b>realmente</b> estouraram.
-        </LI>
-      </UL>
-    </Body>
-  );
-}
-
-function Evergreen(navigate: Nav) {
-  return (
-    <Body>
-      <P>
-        Evergreen = vídeo antigo que <b>continua ganhando views</b> ao longo do tempo. O oposto do
-        conteúdo descartável.
-      </P>
-      <P>
-        <b>Cálculo:</b> diferença entre views totais em snapshots consecutivos, dividido pelos
-        dias entre eles = views/dia. Quando há ≥ 2 snapshots na janela, usa snapshots; quando há
-        só 1 (ou nenhum), cai pra média all-time (views totais ÷ idade do vídeo).
-      </P>
-      <P>
-        <b>Filtros padrão:</b> vídeo precisa ter ≥ 30 dias de idade (descarta o que ainda tá
-        "trending") e ≥ 1 view/dia recente.
-      </P>
-      <UL>
-        <LI>
-          Aparece em <Link onClick={() => navigate('channels')}>Canais → tab Evergreen</Link> e
-          nas <Link onClick={() => navigate('keywords')}>Sugestões de palavras-chave</Link>.
-        </LI>
-        <LI>
-          Quanto mais "Atualizar agora" você fizer ao longo do tempo, mais preciso o cálculo
-          (snapshots reais &gt; média all-time).
-        </LI>
-      </UL>
-    </Body>
-  );
-}
-
-function KeywordScore(_navigate: Nav) {
-  return (
-    <Body>
-      <P>
-        Cada keyword pesquisada recebe um score 0-100 que combina sinais de 3 fontes
-        independentes:
-      </P>
-      <table className="mt-2 w-full text-xs">
-        <thead className="text-left text-zinc-500">
-          <tr>
-            <th className="py-1">Componente</th>
-            <th>Fonte</th>
-            <th>Peso</th>
-            <th>Sentido</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-zinc-200 dark:divide-zinc-800">
-          <tr><td className="py-1.5">Volume mensal</td><td>Keywords Everywhere</td><td>25%</td><td>maior = melhor</td></tr>
-          <tr><td className="py-1.5">Tendência</td><td>Google Trends</td><td>20%</td><td>subindo = melhor</td></tr>
-          <tr><td className="py-1.5">Concorrência</td><td>Scraping (top 10)</td><td>25%</td><td>menor = melhor</td></tr>
-          <tr><td className="py-1.5">Frescor dos top</td><td>Scraping (top 10)</td><td>15%</td><td>mais novo = melhor</td></tr>
-          <tr><td className="py-1.5">Saturação</td><td>Scraping (top 10)</td><td>15%</td><td>menos saturado = melhor</td></tr>
-        </tbody>
-      </table>
-      <P>
-        <b>Renormalização dinâmica:</b> quando uma fonte falha (rate limit, sem chave, erro), os
-        componentes dela saem do cálculo e os pesos das outras são reescalados pra somar 100%. O
-        score continua entre 0 e 100, comparável entre buscas — mas fica marcado "Score
-        renormalizado" no card.
-      </P>
-    </Body>
-  );
-}
-
-function KeywordSuggestions(_navigate: Nav) {
-  return (
-    <Body>
-      <P>
-        Mineração offline a partir do seu próprio banco — <b>sem IA, sem custo</b>. Pega tags e
-        títulos dos vídeos e ranqueia por frequência.
-      </P>
-      <UL>
-        <LI><b>Em destaque:</b> palavras que aparecem em vídeos sinalizados como outlier.</LI>
-        <LI><b>Evergreen:</b> palavras que aparecem em vídeos perenes.</LI>
-        <LI>Tags vêm do YouTube (precisa do botão "Extrair informações" no vídeo).</LI>
-        <LI>Títulos são tokenizados em 1-3 palavras, removendo stopwords pt-BR + en.</LI>
-        <LI>Click numa sugestão dispara a pesquisa completa com as 3 fontes do score.</LI>
-        <LI>
-          <b>X em cada sugestão</b> remove o termo da lista — não volta a aparecer, próximo melhor
-          candidato sobe automaticamente.
-        </LI>
-        <LI>
-          <b>Score 0-100 pré-computado</b> em cada card (bolha colorida: verde ≥70, âmbar ≥40,
-          vermelho &lt;40).
-        </LI>
-      </UL>
     </Body>
   );
 }

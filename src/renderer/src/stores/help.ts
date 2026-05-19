@@ -13,11 +13,6 @@ export type HelpTopic =
   | 'api-youtube'
   | 'api-ke'
   | 'api-github-pat'
-  // Como funciona
-  | 'channels-outliers'
-  | 'evergreen'
-  | 'keyword-score'
-  | 'keyword-suggestions'
   // Custos e cotas
   | 'youtube-quota'
   | 'other-api-costs'
