@@ -17,8 +17,7 @@
 
 import { getSetting, setSetting } from '../settings';
 import { uploadBackupToGithub } from '../backup/github';
-import { checkForUpdates } from '../updates';
-import { broadcastToast } from '../channels/scheduler';
+import { runUpdateAll } from '../channels';
 import type {
   MissedTask,
   ScheduleConfig,
@@ -27,7 +26,7 @@ import type {
   ScheduleTaskKind,
 } from '@shared/types';
 
-const TASK_KINDS: ScheduleTaskKind[] = ['backup', 'updateCheck'];
+const TASK_KINDS: ScheduleTaskKind[] = ['backup', 'channelUpdate'];
 
 const DEFAULT_TIME = '03:00';
 const DEFAULT_WEEKDAY = 0; // domingo
@@ -168,27 +167,22 @@ export async function runTask(kind: ScheduleTaskKind): Promise<ScheduleRunResult
       return { success: false, message: res.message };
     }
 
-    if (kind === 'updateCheck') {
-      const res = await checkForUpdates();
-      // Sucesso da CHECAGEM (não da existência de update). Marca last_run_at
-      // mesmo quando não há atualização — a task foi cumprida.
-      if (!res.error) {
-        await markLastRunAt(kind);
-        if (res.isNewer && res.latestVersion) {
-          broadcastToast({
-            kind: 'info',
-            title: `Atualização disponível: v${res.latestVersion}`,
-            description: 'Clique no badge ao lado do avatar pra ver detalhes e instalar.',
-          });
-        }
-        return {
-          success: true,
-          message: res.isNewer
-            ? `Versão ${res.latestVersion} disponível.`
-            : 'Você já está na versão mais recente.',
-        };
-      }
-      return { success: false, message: res.error };
+    if (kind === 'channelUpdate') {
+      // Dispara "Atualizar agora" recorrente. runUpdateAll emite os eventos
+      // update-run-started/completed sozinho — o renderer vê o spinner global
+      // no Header normalmente. broadcast do completed também sai daqui
+      // explicitamente pra refresh dos cards.
+      const run = await runUpdateAll('scheduled');
+      const ok = run.status !== 'failed';
+      if (ok) await markLastRunAt(kind);
+      const { broadcastUpdateRunCompleted } = await import('../channels/scheduler');
+      broadcastUpdateRunCompleted(run);
+      return {
+        success: ok,
+        message: ok
+          ? `${run.videosNew} novos vídeos · ${run.videosFlagged} sinalizados.`
+          : run.errorMessage || 'Atualização falhou.',
+      };
     }
 
     return { success: false, message: `Task desconhecida: ${kind}` };

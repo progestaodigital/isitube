@@ -6,7 +6,7 @@
 // Some quando a lista zera (todas resolvidas).
 
 import { useEffect, useState } from 'react';
-import { CalendarClock, Github, Download, Loader2 } from 'lucide-react';
+import { CalendarClock, Github, RefreshCw, Loader2 } from 'lucide-react';
 import { Modal } from './ui/Modal';
 import { Button } from './ui/Button';
 import { useToastStore } from '../stores/toast';
@@ -15,7 +15,7 @@ import type { MissedTask, ScheduleTaskKind } from '@shared/types';
 
 const TASK_LABEL: Record<ScheduleTaskKind, { label: string; icon: typeof Github }> = {
   backup: { label: 'Backup', icon: Github },
-  updateCheck: { label: 'Checagem de atualização', icon: Download },
+  channelUpdate: { label: 'Atualização dos canais', icon: RefreshCw },
 };
 
 export function MissedTasksModal() {

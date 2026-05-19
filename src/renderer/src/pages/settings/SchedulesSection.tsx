@@ -4,7 +4,7 @@
 // fechado no horário) são surfacedas via MissedTasksModal no próximo boot.
 
 import { useCallback, useEffect, useState } from 'react';
-import { CalendarClock, AlertTriangle, Save, Github, Download, Loader2 } from 'lucide-react';
+import { CalendarClock, AlertTriangle, Save, Github, RefreshCw, Loader2 } from 'lucide-react';
 import { Section } from './Section';
 import { Button } from '../../components/ui/Button';
 import { useToastStore } from '../../stores/toast';
@@ -35,11 +35,11 @@ const TASK_META: Record<
       'Upload do banco de dados como Release no seu repositório GitHub. Requer token GitHub configurado.',
     icon: Github,
   },
-  updateCheck: {
-    label: 'Checagem de nova versão',
+  channelUpdate: {
+    label: 'Atualização dos canais',
     description:
-      'Consulta o GitHub Releases pra ver se há versão nova do app. Notifica via toast (não instala sozinho — você decide quando aplicar).',
-    icon: Download,
+      'Mesmo "Atualizar agora" da página Canais — busca métricas novas, descobre vídeos recentes e recalcula outliers em todos os canais monitorados.',
+    icon: RefreshCw,
   },
 };
 

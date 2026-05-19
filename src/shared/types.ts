@@ -437,11 +437,15 @@ export type ScheduleInfo = {
 // =============================================================================
 
 /**
- * Tipos de tarefa agendável. `backup` = upload do .db pro GitHub Releases
- * (precisa de PAT configurado). `updateCheck` = consulta GitHub Releases por
- * versão nova e notifica via toast (não auto-instala — usuário escolhe).
+ * Tipos de tarefa agendável recorrente (diário/semanal). `backup` = upload do
+ * .db pro GitHub Releases (precisa de PAT configurado). `channelUpdate` =
+ * dispara o mesmo "Atualizar agora" da página Canais (busca métricas novas,
+ * descobre vídeos novos, recalcula outliers).
+ *
+ * Distinto do `ScheduledUpdate` one-shot (tabela Prisma) que continua
+ * disponível pra agendamento pontual de "rodar uma vez em data/hora X".
  */
-export type ScheduleTaskKind = 'backup' | 'updateCheck';
+export type ScheduleTaskKind = 'backup' | 'channelUpdate';
 
 export type ScheduleMode = 'manual' | 'daily' | 'weekly';
 

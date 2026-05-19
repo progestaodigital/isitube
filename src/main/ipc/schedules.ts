@@ -9,7 +9,7 @@ import {
 } from '../services/schedules';
 import type { ScheduleMode, ScheduleTaskKind } from '@shared/types';
 
-const VALID_KINDS: ScheduleTaskKind[] = ['backup', 'updateCheck'];
+const VALID_KINDS: ScheduleTaskKind[] = ['backup', 'channelUpdate'];
 const VALID_MODES: ScheduleMode[] = ['manual', 'daily', 'weekly'];
 
 function assertKind(value: unknown): asserts value is ScheduleTaskKind {
