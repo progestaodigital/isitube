@@ -50,9 +50,19 @@ export function CredentialField({
     setBusy(true);
     setFeedback(null);
     try {
-      const res = await window.api.credentials.set(provider, value);
-      setFeedback({ kind: res.success ? 'ok' : 'err', text: res.message });
-      if (res.success) setValue('');
+      const setRes = await window.api.credentials.set(provider, value);
+      if (!setRes.success) {
+        setFeedback({ kind: 'err', text: setRes.message });
+        await refresh();
+        return;
+      }
+      // Auto-validação: testa a chave logo após salvar pra reduzir cliques
+      // (Pro user cadastra 3 chaves seguidas, fazer Salvar + Testar pra cada
+      // virava 6 cliques; agora vira 3). Se falhar, mostra a mensagem do
+      // teste — o usuário sabe se a chave que ele acabou de colar é boa.
+      setValue('');
+      const testRes = await window.api.credentials.test(provider);
+      setFeedback({ kind: testRes.success ? 'ok' : 'err', text: testRes.message });
       await refresh();
     } finally {
       setBusy(false);
