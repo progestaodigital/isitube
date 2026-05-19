@@ -9,6 +9,7 @@ import { UpdatePopup } from './pages/channels/UpdatePopup';
 import { VideoDetailModal } from './pages/videos/VideoDetailModal';
 import { OnboardingModal } from './pages/onboarding/OnboardingModal';
 import { LicenseGateModal } from './components/license/LicenseGateModal';
+import { MissedTasksModal } from './components/MissedTasksModal';
 import { useLicense } from './hooks/useLicense';
 import { useUpdateRunStore } from './stores/updateRun';
 
@@ -94,6 +95,7 @@ export function App() {
       <UpdatePopup onActionTaken={() => { /* tab content reacts via its own listeners */ }} />
       <VideoDetailModal />
       <OnboardingModal ready={loaded} />
+      <MissedTasksModal />
     </div>
   );
 }

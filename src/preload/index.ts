@@ -23,8 +23,12 @@ import type {
   KeywordSourceStatuses,
   KeywordSuggestionsPayload,
   LicenseInfo,
+  MissedTask,
   ProviderSnapshot,
   QuotaSnapshot,
+  ScheduleConfig,
+  ScheduleRunResult,
+  ScheduleTaskKind,
   BackupExportResult,
   BackupImportResult,
   BackupInspectResult,
@@ -221,6 +225,21 @@ const api: IsitubeAPI = {
 
   health: {
     list: (): Promise<ProviderSnapshot[]> => ipcRenderer.invoke('health:list'),
+  },
+
+  schedules: {
+    list: (): Promise<ScheduleConfig[]> => ipcRenderer.invoke('schedules:list'),
+    get: (kind: ScheduleTaskKind): Promise<ScheduleConfig> =>
+      ipcRenderer.invoke('schedules:get', kind),
+    set: (
+      kind: ScheduleTaskKind,
+      patch: Partial<Pick<ScheduleConfig, 'mode' | 'time' | 'weekday'>>
+    ): Promise<ScheduleConfig> => ipcRenderer.invoke('schedules:set', kind, patch),
+    listMissed: (): Promise<MissedTask[]> => ipcRenderer.invoke('schedules:list-missed'),
+    run: (kind: ScheduleTaskKind): Promise<ScheduleRunResult> =>
+      ipcRenderer.invoke('schedules:run', kind),
+    snooze: (kind: ScheduleTaskKind): Promise<void> =>
+      ipcRenderer.invoke('schedules:snooze', kind),
   },
 
   dialog: {

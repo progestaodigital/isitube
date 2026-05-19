@@ -432,6 +432,41 @@ export type ScheduleInfo = {
   ranAt: string | null;
 };
 
+// =============================================================================
+// Schedules — backup automático e checagem de atualização do app
+// =============================================================================
+
+/**
+ * Tipos de tarefa agendável. `backup` = upload do .db pro GitHub Releases
+ * (precisa de PAT configurado). `updateCheck` = consulta GitHub Releases por
+ * versão nova e notifica via toast (não auto-instala — usuário escolhe).
+ */
+export type ScheduleTaskKind = 'backup' | 'updateCheck';
+
+export type ScheduleMode = 'manual' | 'daily' | 'weekly';
+
+export type ScheduleConfig = {
+  kind: ScheduleTaskKind;
+  mode: ScheduleMode;
+  /** HH:MM no fuso local da máquina do usuário. */
+  time: string;
+  /** 0-6 (domingo=0). Usado só quando mode='weekly'. */
+  weekday: number;
+  /** ISO da última execução bem-sucedida. Null se nunca rodou. */
+  lastRunAt: string | null;
+};
+
+export type MissedTask = {
+  kind: ScheduleTaskKind;
+  /** ISO de quando a execução deveria ter acontecido (mais recente missed). */
+  expectedAt: string;
+};
+
+export type ScheduleRunResult = {
+  success: boolean;
+  message: string;
+};
+
 export type StartupAction =
   | { kind: 'missed-schedule'; schedule: ScheduleInfo }
   | { kind: 'suggest-update'; lastRunAt: string | null; channelsCount: number }
@@ -588,6 +623,17 @@ export type IsitubeAPI = {
   health: {
     /** Snapshot in-memory dos providers externos desde o boot. */
     list: () => Promise<ProviderSnapshot[]>;
+  };
+  schedules: {
+    list: () => Promise<ScheduleConfig[]>;
+    get: (kind: ScheduleTaskKind) => Promise<ScheduleConfig>;
+    set: (
+      kind: ScheduleTaskKind,
+      patch: Partial<Pick<ScheduleConfig, 'mode' | 'time' | 'weekday'>>
+    ) => Promise<ScheduleConfig>;
+    listMissed: () => Promise<MissedTask[]>;
+    run: (kind: ScheduleTaskKind) => Promise<ScheduleRunResult>;
+    snooze: (kind: ScheduleTaskKind) => Promise<void>;
   };
   schedule: {
     get: () => Promise<ScheduleInfo | null>;

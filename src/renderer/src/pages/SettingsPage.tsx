@@ -10,6 +10,7 @@ import { HealthSection } from './settings/HealthSection';
 import { GeneralSection } from './settings/GeneralSection';
 import { DataSection } from './settings/DataSection';
 import { BackupSection } from './settings/BackupSection';
+import { SchedulesSection } from './settings/SchedulesSection';
 import { useLicense } from '../hooks/useLicense';
 
 export function SettingsPage() {
@@ -48,6 +49,7 @@ export function SettingsPage() {
       <ChannelsSection />
       <GeneralSection />
       <BackupSection />
+      <SchedulesSection />
       <HealthSection />
       <DataSection />
 
