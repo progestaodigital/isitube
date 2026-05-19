@@ -18,6 +18,7 @@ import { useVideoDetailStore } from '../stores/videoDetail';
 import { useToastStore } from '../stores/toast';
 import { useUpdateRunStore } from '../stores/updateRun';
 import { IdeaGenerator } from '../components/keywords/IdeaGenerator';
+import { SetupChecklist } from '../components/home/SetupChecklist';
 import type {
   ChannelInfo,
   EvergreenVideo,
@@ -109,6 +110,8 @@ export function HomePage() {
           Resumo do seu monitoramento e atalhos pros módulos.
         </p>
       </header>
+
+      <SetupChecklist />
 
       <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
         <MetricCard
