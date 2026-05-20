@@ -1,5 +1,15 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { Sprout, TrendingUp, Calendar, Eye, Search, Trash2, Info } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  Sprout,
+  TrendingUp,
+  Calendar,
+  Eye,
+  Search,
+  Trash2,
+  Info,
+  ChevronLeft,
+  ChevronRight,
+} from 'lucide-react';
 import { Card } from '../../components/ui/Card';
 import { Input } from '../../components/ui/Input';
 import { Button } from '../../components/ui/Button';
@@ -11,6 +21,8 @@ import { cn } from '../../lib/cn';
 import type { ChannelInfo, EvergreenFilters, EvergreenVideo } from '@shared/types';
 
 type Readiness = { totalUpdateRuns: number; intervalsAvailable: number; minNeeded: number };
+
+const PAGE_SIZE = 21;
 
 interface EvergreenTabProps {
   channels: ChannelInfo[];
@@ -34,6 +46,7 @@ export function EvergreenTab({ channels, categoryIds = [] }: EvergreenTabProps) 
   });
   const [titleInput, setTitleInput] = useState('');
   const [loading, setLoading] = useState(false);
+  const [page, setPage] = useState(1);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Debounce title typing so we don't requery on every keystroke.
@@ -84,6 +97,22 @@ export function EvergreenTab({ channels, categoryIds = [] }: EvergreenTabProps) 
       return next;
     });
   }, [items]);
+
+  // Whenever the filter set changes the result list changes too — reset to
+  // page 1 so the user doesn't land on an empty/stale page.
+  useEffect(() => {
+    setPage(1);
+  }, [filters, catKey]);
+
+  const totalPages = Math.max(1, Math.ceil(items.length / PAGE_SIZE));
+  // Clamp page if the list shrinks (e.g., user deleted videos in the last page).
+  useEffect(() => {
+    if (page > totalPages) setPage(totalPages);
+  }, [page, totalPages]);
+
+  const pageStart = (page - 1) * PAGE_SIZE;
+  const pageEnd = pageStart + PAGE_SIZE;
+  const pageItems = useMemo(() => items.slice(pageStart, pageEnd), [items, pageStart, pageEnd]);
 
   function toggleSelect(id: string) {
     setSelected((prev) => {
@@ -290,7 +319,9 @@ export function EvergreenTab({ channels, categoryIds = [] }: EvergreenTabProps) 
               <span className="text-xs text-zinc-600 dark:text-zinc-400">
                 {selected.size > 0
                   ? `${selected.size} de ${items.length} selecionado${selected.size > 1 ? 's' : ''}`
-                  : `${items.length} vídeo${items.length > 1 ? 's' : ''} · selecionar todos`}
+                  : totalPages > 1
+                    ? `${items.length} vídeo${items.length > 1 ? 's' : ''} · página ${page} de ${totalPages} · selecionar todos`
+                    : `${items.length} vídeo${items.length > 1 ? 's' : ''} · selecionar todos`}
               </span>
             </label>
             {selected.size > 0 && (
@@ -301,7 +332,7 @@ export function EvergreenTab({ channels, categoryIds = [] }: EvergreenTabProps) 
             )}
           </div>
           <div className="space-y-2">
-          {items.map((v, idx) => {
+          {pageItems.map((v, idx) => {
             const isConfirming = confirmingDelete === v.id;
             const isSel = selected.has(v.id);
             async function handleDelete(e: React.MouseEvent) {
@@ -338,7 +369,7 @@ export function EvergreenTab({ channels, categoryIds = [] }: EvergreenTabProps) 
                   className="flex flex-1 gap-3 text-left"
                 >
                   <div className="flex w-8 shrink-0 items-center justify-center text-sm font-mono font-semibold text-zinc-400">
-                    {idx + 1}
+                    {pageStart + idx + 1}
                   </div>
                   {v.thumbnailUrl && (
                     <img
@@ -422,6 +453,36 @@ export function EvergreenTab({ channels, categoryIds = [] }: EvergreenTabProps) 
             );
           })}
           </div>
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between rounded-lg border border-zinc-200 bg-zinc-50 px-4 py-2 dark:border-zinc-800 dark:bg-zinc-900/40">
+              <span className="text-xs text-zinc-600 dark:text-zinc-400">
+                Mostrando {pageStart + 1}–{Math.min(pageEnd, items.length)} de {items.length}
+              </span>
+              <div className="flex items-center gap-1">
+                <Button
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  variant="secondary"
+                  size="sm"
+                  disabled={page === 1}
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                  Anterior
+                </Button>
+                <span className="px-2 text-xs text-zinc-600 dark:text-zinc-400">
+                  {page} / {totalPages}
+                </span>
+                <Button
+                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                  variant="secondary"
+                  size="sm"
+                  disabled={page === totalPages}
+                >
+                  Próxima
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          )}
         </>
       )}
     </div>

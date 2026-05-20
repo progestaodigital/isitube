@@ -11,6 +11,14 @@ const DEFAULT_DAYS = 30;
 const DEFAULT_EVERGREEN_MIN_AGE_DAYS = 30;
 const DEFAULT_EVERGREEN_LOOKBACK_DAYS = 30;
 
+// Intervalos abaixo desse limite são "ruído de clique" (ex.: usuário disparou
+// "Atualizar agora" duas vezes seguidas, ou um manual logo após o scheduler).
+// Nessas janelas curtas o delta de views é ≈ 0 pra quase todo vídeo, produzindo
+// scores de 0% que quebram a streak de "consecutivos acima da média" de vídeos
+// genuinamente evergreen. 1 hora cobre cliques duplos sem descartar nenhum
+// schedule razoável.
+const MIN_INTERVAL_DAYS = 1 / 24;
+
 // Match channels/index.ts: vídeos <=180s contam como Shorts. Mantemos uma
 // cópia local pra evitar import cruzado (analytics não deve depender do
 // service principal — único ponto de uso é o filtro de tipo do evergreen).
@@ -208,7 +216,7 @@ export async function getEvergreenVideos(
       const prev = v.snapshots[i - 1]!;
       const curr = v.snapshots[i]!;
       const elapsedDays = (curr.takenAt.getTime() - prev.takenAt.getTime()) / 86_400_000;
-      if (elapsedDays <= 0) continue;
+      if (elapsedDays < MIN_INTERVAL_DAYS) continue;
       const delta = curr.viewCount - prev.viewCount;
       // Negative delta (e.g., YouTube view-count adjustment) → treat as 0.
       const viewsPerDay = Math.max(0, delta / elapsedDays);
