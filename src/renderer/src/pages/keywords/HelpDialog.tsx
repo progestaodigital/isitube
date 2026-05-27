@@ -62,8 +62,9 @@ export function HelpDialog({ open, onClose }: HelpDialogProps) {
 
         <Section title="Componentes do score">
           <p className="text-sm text-zinc-600 dark:text-zinc-400">
-            Cada componente vai a 0-100 e é combinado com um peso. Componentes "negativos"
-            (concorrência, saturação, idade) são invertidos antes de entrar no cálculo.
+            Cada componente vai a 0-100 onde <b>maior = melhor pro seu vídeo</b>. Sinais negativos
+            (concorrência, saturação, idade do top) são invertidos antes de entrar — por isso
+            aparecem no breakdown como "Baixa concorrência", "Frescor", "Baixa saturação".
           </p>
           <table className="mt-3 w-full text-sm">
             <thead className="text-left text-xs text-zinc-500">
@@ -76,9 +77,9 @@ export function HelpDialog({ open, onClose }: HelpDialogProps) {
             <tbody className="divide-y divide-zinc-200 dark:divide-zinc-800">
               <Row name="Volume" source="KE" weight="25%" />
               <Row name="Tendência" source="Trends" weight="20%" />
-              <Row name="Concorrência" source="Scraping" weight="25%" />
+              <Row name="Baixa concorrência" source="Scraping" weight="25%" />
               <Row name="Frescor dos top" source="Scraping" weight="15%" />
-              <Row name="Saturação" source="Scraping" weight="15%" />
+              <Row name="Baixa saturação" source="Scraping" weight="15%" />
             </tbody>
           </table>
         </Section>

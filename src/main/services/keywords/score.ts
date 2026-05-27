@@ -32,7 +32,7 @@ type ComponentDef<TSourceData> = {
 
 const SCRAPING_COMPONENTS: ComponentDef<ScrapingData>[] = [
   {
-    name: 'Concorrência',
+    name: 'Baixa concorrência',
     source: 'scraping',
     weight: 0.25,
     invert: true,
@@ -46,7 +46,7 @@ const SCRAPING_COMPONENTS: ComponentDef<ScrapingData>[] = [
     extract: (d) => normalizeAge(d.averageAgeDays),
   },
   {
-    name: 'Saturação',
+    name: 'Baixa saturação',
     source: 'scraping',
     weight: 0.15,
     invert: true,
