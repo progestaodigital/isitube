@@ -15,7 +15,7 @@
     "db:migrate": "prisma migrate dev",
     "db:studio": "prisma studio",
     "db:reset": "prisma migrate reset --force",
-    "release:upload": "node scripts/publish-release.mjs"
+    "release:upload": "node --env-file-if-exists=.env scripts/publish-release.mjs"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.76",
