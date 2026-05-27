@@ -52,9 +52,24 @@ export class ScrapingRealProvider implements KeywordSourceProvider<ScrapingData>
     const highViewCountInTop = topResults.filter((r) => r.viewCount > 500_000).length;
     const averageViewsTop = average(topResults.map((r) => r.viewCount));
 
-    const fromHighViews = (highViewCountInTop / 10) * 70;
-    const fromAverageViews = Math.min(30, (averageViewsTop / 1_000_000) * 30);
-    const competitionScore = clamp(fromHighViews + fromAverageViews, 0, 100);
+    // competitionScore combina três sinais — views absolutas (entrenchment),
+    // velocidade (views/dia, captura termos em alta) e recência (% do top
+    // publicado nos últimos 90 dias, captura competição ativa). A versão
+    // anterior só olhava views absolutas e subestimava drasticamente termos
+    // recém-explodindo (ex: "claude code" dava ~14 sendo claramente quente).
+    const viewsPerDay = topResults.map((r) => r.viewCount / Math.max(1, daysSince(r.publishedAt)));
+    const medianViewsPerDay = median(viewsPerDay);
+    const recentCount = topResults.filter((r) => daysSince(r.publishedAt) <= 90).length;
+
+    const sigViews = (highViewCountInTop / 10) * 100;
+    const sigVelocity = normalizeVelocity(medianViewsPerDay);
+    const sigRecency = (recentCount / topResults.length) * 100;
+
+    const competitionScore = clamp(
+      sigViews * 0.35 + sigVelocity * 0.40 + sigRecency * 0.25,
+      0,
+      100,
+    );
 
     return {
       topResults,
@@ -64,6 +79,20 @@ export class ScrapingRealProvider implements KeywordSourceProvider<ScrapingData>
       competitionScore,
     };
   }
+}
+
+/** Views/dia → 0-100 em escala log: 100/dia → 0, 10k/dia → 100. */
+function normalizeVelocity(viewsPerDay: number): number {
+  if (viewsPerDay <= 0) return 0;
+  const log = Math.log10(viewsPerDay);
+  return clamp(((log - 2) / 2) * 100, 0, 100);
+}
+
+function median(nums: number[]): number {
+  if (nums.length === 0) return 0;
+  const sorted = [...nums].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 0 ? (sorted[mid - 1]! + sorted[mid]!) / 2 : sorted[mid]!;
 }
 
 function extractVideoId(item: any): string | null {
