@@ -471,9 +471,11 @@ export async function listChannels(filters?: {
   return Promise.all(channels.map((c) => projectChannel(c.id, c)));
 }
 
+type ChannelRow = Awaited<ReturnType<ReturnType<typeof getPrisma>['channel']['findUnique']>>;
+
 async function projectChannel(
   id: string,
-  preloaded?: Awaited<ReturnType<typeof getPrisma>['channel']['findUnique']>
+  preloaded?: ChannelRow
 ): Promise<ChannelInfo> {
   const prisma = getPrisma();
   const c =
@@ -503,9 +505,11 @@ async function projectChannel(
     }),
   ]);
 
+  // Prisma agrega BigInt como Decimal/string em alguns drivers; aqui o _avg
+  // já volta como number (Float). Mas o casting Number() é defensivo.
   const recentAverageViews =
     recentAgg._avg.viewCount !== null && recentAgg._avg.viewCount !== undefined
-      ? Math.round(recentAgg._avg.viewCount)
+      ? Math.round(Number(recentAgg._avg.viewCount))
       : null;
 
   return {
@@ -513,9 +517,11 @@ async function projectChannel(
     youtubeId: c.youtubeId,
     title: c.title,
     thumbnailUrl: c.thumbnailUrl,
-    subscriberCount: c.subscriberCount,
+    // BigInt → Number no boundary do IPC pra renderer trabalhar com number
+    // normal. Valores até 2^53 são exatos como Number; YouTube não chega lá.
+    subscriberCount: c.subscriberCount === null ? null : Number(c.subscriberCount),
     videoCount: c.videoCount,
-    totalViewCount: c.totalViewCount,
+    totalViewCount: c.totalViewCount === null ? null : Number(c.totalViewCount),
     monitored: c.monitored,
     lastUpdatedAt: c.lastUpdatedAt?.toISOString() ?? null,
     videoCountTracked,
@@ -1060,7 +1066,7 @@ export async function getFlaggedVideos(
     channelTitle: v.channel?.title,
     title: v.title,
     thumbnailUrl: v.thumbnailUrl,
-    viewCount: v.viewCount,
+    viewCount: Number(v.viewCount),
     likeCount: v.likeCount,
     commentCount: v.commentCount,
     durationSec: v.durationSec,
@@ -1080,22 +1086,25 @@ export async function getFlaggedVideos(
  *   - Senão: views_totais ÷ idade_em_dias (lifetime, fallback até acumular snapshots)
  */
 function viewsPerDay(v: {
-  viewCount: number;
+  // Prisma retorna BigInt pra view_count desde a migração de widen.
+  // Aceita number também (caller pode estar passando já convertido).
+  viewCount: number | bigint;
   publishedAt: Date;
-  snapshots: { takenAt: Date; viewCount: number }[];
+  snapshots: { takenAt: Date; viewCount: number | bigint }[];
 }): number {
   if (v.snapshots.length >= 2) {
     const first = v.snapshots[0]!;
     const last = v.snapshots[v.snapshots.length - 1]!;
     const elapsedDays = (last.takenAt.getTime() - first.takenAt.getTime()) / 86_400_000;
     if (elapsedDays > 0) {
-      return Math.max(0, (last.viewCount - first.viewCount) / elapsedDays);
+      return Math.max(0, (Number(last.viewCount) - Number(first.viewCount)) / elapsedDays);
     }
   }
   // Fallback: lifetime average.
+  const total = Number(v.viewCount);
   const ageDays = (Date.now() - v.publishedAt.getTime()) / 86_400_000;
-  if (ageDays <= 0) return v.viewCount; // publicado agora — usa total
-  return v.viewCount / ageDays;
+  if (ageDays <= 0) return total; // publicado agora — usa total
+  return total / ageDays;
 }
 
 /** Mediana de uma lista (ordena cópia, devolve elemento central ou média dos 2 centrais). */
@@ -1171,7 +1180,7 @@ function projectVideo(v: {
   channel?: { title: string } | null;
   title: string;
   thumbnailUrl: string | null;
-  viewCount: number;
+  viewCount: number | bigint;
   likeCount: number | null;
   commentCount: number | null;
   durationSec: number | null;
@@ -1187,7 +1196,7 @@ function projectVideo(v: {
     channelTitle: v.channel?.title,
     title: v.title,
     thumbnailUrl: v.thumbnailUrl,
-    viewCount: v.viewCount,
+    viewCount: Number(v.viewCount),
     likeCount: v.likeCount,
     commentCount: v.commentCount,
     durationSec: v.durationSec,

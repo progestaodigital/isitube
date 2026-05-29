@@ -93,9 +93,11 @@ model Channel {
   youtubeId       String    @unique @map("youtube_id")
   title           String
   thumbnailUrl    String?   @map("thumbnail_url")
-  subscriberCount Int?      @map("subscriber_count")
+  // BigInt — canais grandes ultrapassam 2^31 (T-Series ~290M subs hoje,
+  // MrBeast 90B+ total views). Era Int e quebrava o findMany inteiro.
+  subscriberCount BigInt?   @map("subscriber_count")
   videoCount      Int?      @map("video_count")
-  totalViewCount  Int?      @map("total_view_count")
+  totalViewCount  BigInt?   @map("total_view_count")
   monitored       Boolean   @default(true)
   lastUpdatedAt   DateTime? @map("last_updated_at")
 
@@ -149,8 +151,8 @@ model ChannelSnapshot {
   channelId       String   @map("channel_id")
   channel         Channel  @relation(fields: [channelId], references: [id], onDelete: Cascade)
   takenAt         DateTime @default(now()) @map("taken_at")
-  subscriberCount Int?     @map("subscriber_count")
-  totalViewCount  Int?     @map("total_view_count")
+  subscriberCount BigInt?  @map("subscriber_count")
+  totalViewCount  BigInt?  @map("total_view_count")
   videoCount      Int?     @map("video_count")
 
   createdAt DateTime  @default(now()) @map("created_at")
@@ -169,7 +171,8 @@ model Video {
   channel      Channel  @relation(fields: [channelId], references: [id], onDelete: Cascade)
   title        String
   thumbnailUrl String?  @map("thumbnail_url")
-  viewCount    Int      @default(0) @map("view_count")
+  // BigInt — vídeos virais ultrapassam 2^31 (Baby Shark ~15B, Despacito 8.5B).
+  viewCount    BigInt   @default(0) @map("view_count")
   likeCount    Int?     @map("like_count")
   commentCount Int?     @map("comment_count")
   durationSec  Int?     @map("duration_sec")
@@ -223,7 +226,8 @@ model VideoSnapshot {
   updateRunId  String?    @map("update_run_id")
   updateRun    UpdateRun? @relation(fields: [updateRunId], references: [id], onDelete: SetNull)
   takenAt      DateTime   @default(now()) @map("taken_at")
-  viewCount    Int        @map("view_count")
+  // BigInt — pareia com Video.viewCount.
+  viewCount    BigInt     @map("view_count")
   likeCount    Int?       @map("like_count")
   commentCount Int?       @map("comment_count")
 

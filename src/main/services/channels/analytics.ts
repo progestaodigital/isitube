@@ -96,8 +96,8 @@ export async function getChannelsTimeSeries(
       for (let i = 1; i < c.snapshots.length; i++) {
         const prev = c.snapshots[i - 1]!;
         const curr = c.snapshots[i]!;
-        const prevViews = prev.totalViewCount;
-        const currViews = curr.totalViewCount;
+        const prevViews = prev.totalViewCount === null ? null : Number(prev.totalViewCount);
+        const currViews = curr.totalViewCount === null ? null : Number(curr.totalViewCount);
         if (prevViews === null || currViews === null) {
           points.push({ date: curr.takenAt.toISOString(), value: null });
           continue;
@@ -129,9 +129,9 @@ export async function getChannelsTimeSeries(
         date: s.takenAt.toISOString(),
         value:
           metric === 'totalViews'
-            ? s.totalViewCount
+            ? s.totalViewCount === null ? null : Number(s.totalViewCount)
             : metric === 'subscribers'
-              ? s.subscriberCount
+              ? s.subscriberCount === null ? null : Number(s.subscriberCount)
               : null,
       })),
     };
@@ -217,7 +217,7 @@ export async function getEvergreenVideos(
       const curr = v.snapshots[i]!;
       const elapsedDays = (curr.takenAt.getTime() - prev.takenAt.getTime()) / 86_400_000;
       if (elapsedDays < MIN_INTERVAL_DAYS) continue;
-      const delta = curr.viewCount - prev.viewCount;
+      const delta = Number(curr.viewCount) - Number(prev.viewCount);
       // Negative delta (e.g., YouTube view-count adjustment) → treat as 0.
       const viewsPerDay = Math.max(0, delta / elapsedDays);
       intervals.push({
@@ -321,7 +321,7 @@ export async function getEvergreenVideos(
         channelId: cv.raw.channelId,
         channelTitle: cv.raw.channel?.title ?? '',
         publishedAt: cv.raw.publishedAt.toISOString(),
-        totalViewCount: cv.raw.viewCount,
+        totalViewCount: Number(cv.raw.viewCount),
         viewsPerDay: Math.round(lastViewsPerDay),
         consecutiveAboveAverage: consecutive,
         recentPercentages: recent.map((r) => Math.round(r.pct)),

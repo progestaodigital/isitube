@@ -104,7 +104,8 @@ type DbVideo = {
   id: string;
   title: string;
   tags: string | null;
-  viewCount: number;
+  // Prisma retorna bigint pra view_count (BIGINT desde a migração de widen).
+  viewCount: number | bigint;
   durationSec: number | null;
   publishedAt: Date;
   channelId: string;
@@ -215,11 +216,11 @@ export async function getKeywordSuggestions(): Promise<KeywordSuggestionsPayload
       const elapsedDays =
         (last.takenAt.getTime() - first.takenAt.getTime()) / 86_400_000;
       if (elapsedDays > 0) {
-        viewsPerDay = (last.viewCount - first.viewCount) / elapsedDays;
+        viewsPerDay = (Number(last.viewCount) - Number(first.viewCount)) / elapsedDays;
       }
     } else {
       const ageDays = (now - v.publishedAt.getTime()) / 86_400_000;
-      if (ageDays > 0) viewsPerDay = v.viewCount / ageDays;
+      if (ageDays > 0) viewsPerDay = Number(v.viewCount) / ageDays;
     }
     if (viewsPerDay >= 1) {
       evergreenVideos.push({
@@ -392,7 +393,7 @@ function addOccurrence(
   if (entry.videoIds.has(video.id)) return; // count each video only once per term
   entry.videoIds.add(video.id);
   entry.occurrences += 1;
-  entry.totalViews += video.viewCount;
+  entry.totalViews += Number(video.viewCount);
   if (isShort) entry.shorts += 1;
   else entry.long += 1;
 }

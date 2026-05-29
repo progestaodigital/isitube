@@ -42,7 +42,8 @@ type DbVideo = {
   channel?: { title: string } | null;
   title: string;
   thumbnailUrl: string | null;
-  viewCount: number;
+  // BigInt desde a migração de widen — convertido pra Number na projection.
+  viewCount: number | bigint;
   likeCount: number | null;
   commentCount: number | null;
   durationSec: number | null;
@@ -79,7 +80,7 @@ function projectVideoDetail(v: DbVideo): VideoDetail {
     channelTitle: v.channel?.title,
     title: v.title,
     thumbnailUrl: v.thumbnailUrl,
-    viewCount: v.viewCount,
+    viewCount: Number(v.viewCount),
     likeCount: v.likeCount,
     commentCount: v.commentCount,
     durationSec: v.durationSec,
