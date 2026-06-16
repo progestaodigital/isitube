@@ -17,6 +17,8 @@ import {
   Captions,
   AlertTriangle,
   Trash2,
+  BookMarked,
+  BookmarkPlus,
 } from 'lucide-react';
 import { Modal } from '../../components/ui/Modal';
 import { Button } from '../../components/ui/Button';
@@ -43,6 +45,7 @@ export function VideoDetailModal() {
   const [extracting, setExtracting] = useState(false);
   const [extractingTranscript, setExtractingTranscript] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [savingLibrary, setSavingLibrary] = useState(false);
 
   const refresh = useCallback(async (id: string) => {
     setLoading(true);
@@ -133,6 +136,35 @@ export function VideoDetailModal() {
       showToast({ kind: 'success', title: 'Salvo', description: res.path });
     } else if (res.message !== 'Exportação cancelada.') {
       showToast({ kind: 'error', title: 'Falha', description: res.message });
+    }
+  }
+
+  async function handleToggleLibrary() {
+    if (!videoId || !video || savingLibrary) return;
+    setSavingLibrary(true);
+    try {
+      const res = video.inLibrary
+        ? await window.api.library.remove(videoId)
+        : await window.api.library.add(videoId, null);
+      if (res.success) {
+        setVideo((v) =>
+          v
+            ? {
+                ...v,
+                inLibrary: res.inLibrary,
+                libraryAddedAt: res.inLibrary ? new Date().toISOString() : null,
+              }
+            : v
+        );
+        showToast({
+          kind: 'success',
+          title: res.inLibrary ? 'Salvo na biblioteca' : 'Removido da biblioteca',
+        });
+      } else {
+        showToast({ kind: 'error', title: 'Falha', description: res.message });
+      }
+    } finally {
+      setSavingLibrary(false);
     }
   }
 
@@ -229,6 +261,28 @@ export function VideoDetailModal() {
               Assistir no YouTube
               <ExternalLink className="h-3.5 w-3.5 opacity-70" />
             </a>
+            <Button
+              onClick={handleToggleLibrary}
+              disabled={savingLibrary}
+              variant={video.inLibrary ? 'secondary' : 'primary'}
+              size="sm"
+              title={
+                video.inLibrary
+                  ? 'Remover esse vídeo da biblioteca pessoal'
+                  : 'Salvar esse vídeo na biblioteca pessoal pra consultar depois'
+              }
+            >
+              {video.inLibrary ? (
+                <BookMarked className="h-4 w-4" />
+              ) : (
+                <BookmarkPlus className="h-4 w-4" />
+              )}
+              {savingLibrary
+                ? 'Salvando...'
+                : video.inLibrary
+                  ? 'Na biblioteca'
+                  : 'Salvar na biblioteca'}
+            </Button>
             <Button
               onClick={handleDelete}
               disabled={deleting}

@@ -1,5 +1,14 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Home, Tv, Search, FileText, Settings, HelpCircle, type LucideIcon } from 'lucide-react';
+import {
+  Home,
+  Tv,
+  Search,
+  FileText,
+  BookMarked,
+  Settings,
+  HelpCircle,
+  type LucideIcon,
+} from 'lucide-react';
 import { cn } from '../../lib/cn';
 import { useRouterStore, type View } from '../../stores/router';
 
@@ -14,6 +23,7 @@ const navItems: NavItem[] = [
   { icon: Tv, label: 'Canais', view: 'channels' },
   { icon: Search, label: 'Palavras-chave', view: 'keywords' },
   { icon: FileText, label: 'Vídeos', view: 'videos' },
+  { icon: BookMarked, label: 'Biblioteca', view: 'library' },
   { icon: Settings, label: 'Configurações', view: 'settings' },
   { icon: HelpCircle, label: 'Ajuda', view: 'help' },
 ];
@@ -24,6 +34,7 @@ interface Counts {
   evergreen: number;
   extracted: number;
   keywordsHistory: number;
+  library: number;
 }
 
 const EMPTY_COUNTS: Counts = {
@@ -32,6 +43,7 @@ const EMPTY_COUNTS: Counts = {
   evergreen: 0,
   extracted: 0,
   keywordsHistory: 0,
+  library: 0,
 };
 
 export function Sidebar() {
@@ -49,12 +61,13 @@ export function Sidebar() {
 
   const refresh = useCallback(async () => {
     try {
-      const [channels, flagged, evergreen, extracted, history] = await Promise.all([
+      const [channels, flagged, evergreen, extracted, history, libraryCount] = await Promise.all([
         window.api.channels.list(),
         window.api.channels.getFlaggedVideos({ minPercent: 150 }),
         window.api.channels.analyticsEvergreen({ minViewsPerDay: 1 }),
         window.api.videos.listExtracted({}),
         window.api.keywords.history(50),
+        window.api.library.count(),
       ]);
       setCounts({
         channels: channels.length,
@@ -62,6 +75,7 @@ export function Sidebar() {
         evergreen: evergreen.length,
         extracted: extracted.length,
         keywordsHistory: history.length,
+        library: libraryCount,
       });
     } catch {
       // swallow — sidebar badges shouldn't block navigation
@@ -93,6 +107,9 @@ export function Sidebar() {
     }
     if (view === 'keywords' && counts.keywordsHistory > 0) {
       return { value: counts.keywordsHistory };
+    }
+    if (view === 'library' && counts.library > 0) {
+      return { value: counts.library };
     }
     return null;
   }
@@ -160,6 +177,8 @@ function tooltipFor(view: View, counts: Counts): string | undefined {
       return `${counts.extracted} vídeo${counts.extracted !== 1 ? 's' : ''} com metadata extraída`;
     case 'keywords':
       return `${counts.keywordsHistory} pesquisa${counts.keywordsHistory !== 1 ? 's' : ''} no histórico`;
+    case 'library':
+      return `${counts.library} vídeo${counts.library !== 1 ? 's' : ''} salvo${counts.library !== 1 ? 's' : ''} na biblioteca`;
     default:
       return undefined;
   }

@@ -61,6 +61,9 @@ type DbVideo = {
   transcriptStatus: string | null;
   transcriptLanguage: string | null;
   transcriptExtractedAt: Date | null;
+  inLibrary: boolean;
+  libraryAddedAt: Date | null;
+  libraryNotes: string | null;
 };
 
 function projectVideoDetail(v: DbVideo): VideoDetail {
@@ -101,6 +104,9 @@ function projectVideoDetail(v: DbVideo): VideoDetail {
         : null,
     transcriptLanguage: v.transcriptLanguage,
     transcriptExtractedAt: v.transcriptExtractedAt?.toISOString() ?? null,
+    inLibrary: v.inLibrary,
+    libraryAddedAt: v.libraryAddedAt?.toISOString() ?? null,
+    libraryNotes: v.libraryNotes,
   };
 }
 

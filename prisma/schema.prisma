@@ -198,6 +198,13 @@ model Video {
   transcriptLanguage    String?   @map("transcript_language")
   transcriptExtractedAt DateTime? @map("transcript_extracted_at")
 
+  // Biblioteca pessoal — usuário "salva" vídeos pra consulta. Independente
+  // do monitoramento (vídeo pode estar na lib mesmo se o canal sai do
+  // monitoramento). libraryAddedAt vira a ordem padrão da listagem.
+  inLibrary       Boolean   @default(false) @map("in_library")
+  libraryAddedAt  DateTime? @map("library_added_at")
+  libraryNotes    String?   @map("library_notes")
+
   snapshots VideoSnapshot[]
 
   createdAt DateTime  @default(now()) @map("created_at")
@@ -208,6 +215,7 @@ model Video {
   @@index([channelId, publishedAt])
   @@index([flaggedAsOutlier, publishedAt])
   @@index([metadataExtractedAt])
+  @@index([inLibrary, libraryAddedAt])
   @@map("videos")
 }
 

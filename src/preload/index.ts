@@ -16,6 +16,9 @@ import type {
   FreeKeywordIdeasResult,
   IsitubeAPI,
   KeywordHistoryItem,
+  LibraryActionResult,
+  LibraryFilters,
+  LibraryItem,
   KeywordIdeasResult,
   KeywordResult,
   KeywordSearchOptions,
@@ -201,6 +204,18 @@ const api: IsitubeAPI = {
       ipcRenderer.invoke('videos:restore', videoIds),
     purge: (videoIds: string[]): Promise<number> =>
       ipcRenderer.invoke('videos:purge', videoIds),
+  },
+
+  library: {
+    add: (videoId: string, notes?: string | null): Promise<LibraryActionResult> =>
+      ipcRenderer.invoke('library:add', videoId, notes ?? null),
+    remove: (videoId: string): Promise<LibraryActionResult> =>
+      ipcRenderer.invoke('library:remove', videoId),
+    list: (filters?: LibraryFilters): Promise<LibraryItem[]> =>
+      ipcRenderer.invoke('library:list', filters),
+    updateNotes: (videoId: string, notes: string): Promise<LibraryActionResult> =>
+      ipcRenderer.invoke('library:update-notes', videoId, notes),
+    count: (): Promise<number> => ipcRenderer.invoke('library:count'),
   },
 
   transcripts: {

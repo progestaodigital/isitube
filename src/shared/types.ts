@@ -188,10 +188,15 @@ export type ChannelInfo = {
   thumbnailUrl: string | null;
   subscriberCount: number | null;
   videoCount: number | null;
+  totalViewCount: number | null;
   monitored: boolean;
   lastUpdatedAt: string | null;
   videoCountTracked: number; // videos we have stored locally
   flaggedCount: number;
+  /** Average views nos vídeos publicados nos últimos `lookbackDays`. */
+  recentAverageViews: number | null;
+  recentVideoCount: number;
+  lookbackDays: number;
   categories: Array<{ id: string; name: string; color: string | null }>;
 };
 
@@ -210,6 +215,9 @@ export type VideoInfo = {
   channelAvgViewsAtCheck: number | null;
   outlierPercent: number | null;
   flaggedAsOutlier: boolean;
+  /** Biblioteca pessoal — true se o usuário salvou esse vídeo. */
+  inLibrary?: boolean;
+  libraryAddedAt?: string | null;
   /**
    * Set only by getFlaggedVideos: indicates whether the per-video baseline was
    * the same-type subset of the channel ('type') or a fallback to the channel's
@@ -263,6 +271,36 @@ export type VideoDetail = VideoInfo & {
   transcriptStatus: TranscriptStatus | null;
   transcriptLanguage: string | null;
   transcriptExtractedAt: string | null;
+  /** Anotação livre do usuário pra esse vídeo na biblioteca. */
+  libraryNotes: string | null;
+};
+
+// =============================================================================
+// Biblioteca pessoal (Module 4)
+// =============================================================================
+
+/**
+ * Item da biblioteca pessoal — `VideoDetail` enriquecido com a anotação
+ * livre e a data de adição. Listagem é ordenada por `libraryAddedAt desc`
+ * por padrão (último salvo no topo).
+ */
+export type LibraryItem = VideoDetail & {
+  libraryAddedAt: string;
+};
+
+export type LibraryFilters = {
+  /** Busca por termo no título do vídeo. */
+  query?: string;
+  channelId?: string;
+  videoType?: VideoType;
+  sort?: 'recent' | 'oldest' | 'mostViews' | 'title';
+};
+
+export type LibraryActionResult = {
+  success: boolean;
+  message: string;
+  /** Estado final do vídeo após a operação (útil pra atualizar o botão sem refetch). */
+  inLibrary: boolean;
 };
 
 export type VideoMetadataExtractionResult = {
@@ -609,6 +647,13 @@ export type IsitubeAPI = {
     getDetail: (videoId: string) => Promise<VideoDetail | null>;
     extractMetadata: (videoId: string) => Promise<VideoMetadataExtractionResult>;
     listExtracted: (filters?: ExtractedVideosFilters) => Promise<VideoDetail[]>;
+  };
+  library: {
+    add: (videoId: string, notes?: string | null) => Promise<LibraryActionResult>;
+    remove: (videoId: string) => Promise<LibraryActionResult>;
+    list: (filters?: LibraryFilters) => Promise<LibraryItem[]>;
+    updateNotes: (videoId: string, notes: string) => Promise<LibraryActionResult>;
+    count: () => Promise<number>;
   };
   transcripts: {
     get: (videoId: string) => Promise<VideoTranscript | null>;

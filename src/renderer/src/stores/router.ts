@@ -1,6 +1,13 @@
 import { create } from 'zustand';
 
-export type View = 'home' | 'channels' | 'keywords' | 'videos' | 'settings' | 'help';
+export type View =
+  | 'home'
+  | 'channels'
+  | 'keywords'
+  | 'videos'
+  | 'library'
+  | 'settings'
+  | 'help';
 
 interface RouterStore {
   view: View;
