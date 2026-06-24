@@ -43,17 +43,44 @@ export type ReleaseSummary = {
  * auto-update normal (1-2 req por boot). Se o usuário configurou PAT pra
  * backup, aproveitamos pra ganhar rate limit folgado.
  */
-async function buildGithubHeaders(): Promise<Record<string, string>> {
-  const base: Record<string, string> = {
+function buildAnonHeaders(): Record<string, string> {
+  return {
     Accept: 'application/vnd.github+json',
     'X-GitHub-Api-Version': '2022-11-28',
   };
+}
+
+async function buildGithubHeaders(): Promise<Record<string, string>> {
+  const base = buildAnonHeaders();
 
   const status = await getCredentialStatus('github');
   if (!status?.hasValue || status.status !== 'valid') return base;
   const pat = await getCredentialPlainText('github');
   if (!pat) return base;
   return { ...base, Authorization: `Bearer ${pat}` };
+}
+
+/**
+ * fetch que tenta com PAT (rate limit folgado) e, se voltar 401, refaz sem
+ * auth. Mantém o app funcionando mesmo se o PAT do usuário expirou/foi
+ * revogado — o que vai acontecer eventualmente porque GitHub PATs têm
+ * expiração padrão de 30/90 dias.
+ *
+ * Só faz fallback em endpoints públicos (releases listing/latest). Download
+ * de asset também é público mas a URL final é signed, então 401 ali também
+ * é caso de fallback anônimo.
+ */
+async function githubFetch(url: string, extraHeaders?: Record<string, string>): Promise<Response> {
+  const authed = await buildGithubHeaders();
+  const headers = { ...authed, ...extraHeaders };
+  let res = await fetch(url, { headers, redirect: 'follow' });
+  if (res.status === 401 && 'Authorization' in headers) {
+    // PAT inválido — refaz anônimo. Repo é público então isso resolve.
+    const { Authorization: _ignored, ...anonHeaders } = headers;
+    void _ignored;
+    res = await fetch(url, { headers: anonHeaders, redirect: 'follow' });
+  }
+  return res;
 }
 
 /**
@@ -83,10 +110,8 @@ export async function checkForUpdates(): Promise<UpdateCheckResult> {
   };
 
   try {
-    const headers = await buildGithubHeaders();
-    const res = await fetch(
-      `https://api.github.com/repos/${REPO}/releases/latest`,
-      { headers }
+    const res = await githubFetch(
+      `https://api.github.com/repos/${REPO}/releases/latest`
     );
 
     if (res.status === 404) {
@@ -148,10 +173,8 @@ export async function listAllReleases(): Promise<{
 }> {
   const currentVersion = app.getVersion();
   try {
-    const headers = await buildGithubHeaders();
-    const res = await fetch(
-      `https://api.github.com/repos/${REPO}/releases?per_page=50`,
-      { headers }
+    const res = await githubFetch(
+      `https://api.github.com/repos/${REPO}/releases?per_page=50`
     );
 
     if (!res.ok) {
@@ -215,15 +238,12 @@ export async function downloadAndInstall(
   fileName: string
 ): Promise<{ success: boolean; message: string }> {
   try {
-    const headers = await buildGithubHeaders();
     // Pra download do asset, override do Accept pra octet-stream (redireciona
-    // pro signed URL no S3 do GitHub).
-    const res = await fetch(
+    // pro signed URL no S3 do GitHub). githubFetch já faz fallback anônimo
+    // se o PAT do usuário tiver expirado.
+    const res = await githubFetch(
       `https://api.github.com/repos/${REPO}/releases/assets/${assetId}`,
-      {
-        headers: { ...headers, Accept: 'application/octet-stream' },
-        redirect: 'follow',
-      }
+      { Accept: 'application/octet-stream' }
     );
 
     if (!res.ok) {
