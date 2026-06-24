@@ -25,6 +25,7 @@ import type {
   KanbanColumn,
   KanbanReferenceType,
   KanbanThumbnailUpload,
+  GlobalSearchResult,
   KeywordIdeasResult,
   KeywordResult,
   KeywordSearchOptions,
@@ -210,6 +211,9 @@ const api: IsitubeAPI = {
       ipcRenderer.invoke('videos:restore', videoIds),
     purge: (videoIds: string[]): Promise<number> =>
       ipcRenderer.invoke('videos:purge', videoIds),
+    purgeAll: (): Promise<number> => ipcRenderer.invoke('videos:purge-all'),
+    trashRetentionDays: (): Promise<number> =>
+      ipcRenderer.invoke('videos:trash-retention-days'),
   },
 
   library: {
@@ -222,6 +226,11 @@ const api: IsitubeAPI = {
     updateNotes: (videoId: string, notes: string): Promise<LibraryActionResult> =>
       ipcRenderer.invoke('library:update-notes', videoId, notes),
     count: (): Promise<number> => ipcRenderer.invoke('library:count'),
+  },
+
+  search: {
+    global: (query: string): Promise<GlobalSearchResult> =>
+      ipcRenderer.invoke('search:global', query),
   },
 
   kanban: {

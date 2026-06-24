@@ -1,9 +1,11 @@
 import { ipcMain } from 'electron';
 import {
   extractVideoMetadata,
+  getTrashRetentionDays,
   getVideoDetail,
   listDeletedVideos,
   listExtractedVideos,
+  purgeAllDeletedVideos,
   purgeVideos,
   removeVideo,
   removeVideos,
@@ -64,4 +66,8 @@ export function registerVideosHandlers(): void {
     }
     return purgeVideos(ids as string[]);
   });
+
+  ipcMain.handle('videos:purge-all', async () => purgeAllDeletedVideos());
+
+  ipcMain.handle('videos:trash-retention-days', async () => getTrashRetentionDays());
 }

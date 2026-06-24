@@ -5,6 +5,7 @@ import { disconnectPrisma, getPrisma } from './db';
 import { ensureMigrationsApplied } from './db/migrations';
 import { scheduleNextTimer } from './services/channels/scheduler';
 import { startScheduler } from './services/schedules';
+import { purgeExpiredDeletedVideos } from './services/videos';
 
 const isDev = !app.isPackaged;
 
@@ -83,6 +84,20 @@ app.whenReady().then(async () => {
   // são detectadas no boot do renderer via schedules:list-missed e um
   // modal pergunta "Rodar agora ou Adiar".
   startScheduler();
+
+  // Lixeira: purge silencioso de vídeos soft-deleted há mais de 30d.
+  // Roda no boot e a cada 12h enquanto o app fica aberto. Erros são
+  // logados mas não interrompem o boot.
+  const runTrashPurge = async () => {
+    try {
+      const n = await purgeExpiredDeletedVideos();
+      if (n > 0) console.log(`[trash] auto-purged ${n} expired video(s)`);
+    } catch (err) {
+      console.error('[trash] auto-purge failed:', err);
+    }
+  };
+  runTrashPurge();
+  setInterval(runTrashPurge, 12 * 60 * 60 * 1000);
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createMainWindow();

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Trash2, RotateCcw, AlertTriangle, Eye, Calendar } from 'lucide-react';
+import { Trash2, RotateCcw, AlertTriangle, Eye, Calendar, Clock } from 'lucide-react';
 import { Modal } from '../../components/ui/Modal';
 import { Button } from '../../components/ui/Button';
 import { Checkbox } from '../../components/ui/Checkbox';
@@ -19,12 +19,17 @@ export function TrashDialog({ open, onClose, onChange }: TrashDialogProps) {
   const [loading, setLoading] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
+  const [retentionDays, setRetentionDays] = useState(30);
 
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
-      const list = await window.api.videos.listDeleted();
+      const [list, days] = await Promise.all([
+        window.api.videos.listDeleted(),
+        window.api.videos.trashRetentionDays(),
+      ]);
       setItems(list);
+      setRetentionDays(days);
       setSelected((prev) => {
         const next = new Set<string>();
         for (const v of list) if (prev.has(v.id)) next.add(v.id);
@@ -95,6 +100,29 @@ export function TrashDialog({ open, onClose, onChange }: TrashDialogProps) {
     }
   }
 
+  async function handlePurgeAll() {
+    if (items.length === 0) return;
+    const ok = window.confirm(
+      `Limpar a lixeira inteira (${items.length} vídeo${items.length > 1 ? 's' : ''})?\n\n` +
+        `Vai remover TODOS os vídeos da lixeira do banco, junto com snapshots. ` +
+        `Não tem volta.`
+    );
+    if (!ok) return;
+    setBusy(true);
+    try {
+      const n = await window.api.videos.purgeAll();
+      showToast({
+        kind: 'info',
+        title: `Lixeira limpa — ${n} vídeo${n > 1 ? 's' : ''} apagado${n > 1 ? 's' : ''}`,
+      });
+      setSelected(new Set());
+      await refresh();
+      onChange();
+    } finally {
+      setBusy(false);
+    }
+  }
+
   const allSelected = items.length > 0 && selected.size === items.length;
   const someSelected = selected.size > 0 && !allSelected;
 
@@ -104,10 +132,11 @@ export function TrashDialog({ open, onClose, onChange }: TrashDialogProps) {
         <div className="flex items-start gap-2 rounded-lg bg-zinc-100 p-3 text-xs dark:bg-zinc-800/50">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
           <div className="text-zinc-700 dark:text-zinc-300">
-            Vídeos excluídos via "Excluir do monitoramento" ficam aqui. Não são
-            mais snapshotados nas atualizações nem aparecem nas listas.
-            <b> Restaurar</b> traz de volta. <b>Apagar permanentemente</b> remove
-            do banco junto com snapshots — sem volta.
+            Vídeos excluídos via "Excluir do monitoramento" ficam aqui por{' '}
+            <b>{retentionDays} dias</b> e depois somem automaticamente. Não
+            são mais snapshotados nem aparecem nas listas. <b>Restaurar</b>{' '}
+            traz de volta. <b>Apagar permanentemente</b> ou <b>Limpar tudo</b>{' '}
+            remove agora do banco junto com snapshots — sem volta.
           </div>
         </div>
 
@@ -137,24 +166,37 @@ export function TrashDialog({ open, onClose, onChange }: TrashDialogProps) {
                     : `${items.length} vídeo${items.length > 1 ? 's' : ''} excluído${items.length > 1 ? 's' : ''}`}
                 </span>
               </label>
-              {selected.size > 0 && (
-                <div className="flex gap-2">
-                  <Button onClick={handleRestore} disabled={busy} variant="secondary" size="sm">
-                    <RotateCcw className="h-4 w-4" />
-                    Restaurar {selected.size}
-                  </Button>
+              <div className="flex gap-2">
+                {selected.size > 0 ? (
+                  <>
+                    <Button onClick={handleRestore} disabled={busy} variant="secondary" size="sm">
+                      <RotateCcw className="h-4 w-4" />
+                      Restaurar {selected.size}
+                    </Button>
+                    <Button
+                      onClick={handlePurge}
+                      disabled={busy}
+                      variant="primary"
+                      size="sm"
+                      className="bg-red-700 hover:bg-red-800"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                      Apagar definitivamente
+                    </Button>
+                  </>
+                ) : (
                   <Button
-                    onClick={handlePurge}
+                    onClick={handlePurgeAll}
                     disabled={busy}
-                    variant="primary"
+                    variant="ghost"
                     size="sm"
-                    className="bg-red-700 hover:bg-red-800"
+                    className="text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30"
                   >
                     <Trash2 className="h-4 w-4" />
-                    Apagar definitivamente
+                    Limpar tudo
                   </Button>
-                </div>
-              )}
+                )}
+              </div>
             </div>
 
             <div className="max-h-[480px] space-y-2 overflow-y-auto">
@@ -195,6 +237,9 @@ export function TrashDialog({ open, onClose, onChange }: TrashDialogProps) {
                           <Calendar className="h-3 w-3" />
                           publicado {new Date(v.publishedAt).toLocaleDateString('pt-BR')}
                         </span>
+                        {v.deletedAt && (
+                          <ExpiresIn deletedAtIso={v.deletedAt} retentionDays={retentionDays} />
+                        )}
                       </div>
                     </div>
                   </div>
@@ -218,4 +263,32 @@ function formatCompact(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
   if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
   return String(n);
+}
+
+function ExpiresIn({
+  deletedAtIso,
+  retentionDays,
+}: {
+  deletedAtIso: string;
+  retentionDays: number;
+}) {
+  const elapsedMs = Date.now() - new Date(deletedAtIso).getTime();
+  const elapsedDays = elapsedMs / 86_400_000;
+  const daysLeft = Math.max(0, Math.ceil(retentionDays - elapsedDays));
+  const isUrgent = daysLeft <= 3;
+  return (
+    <span
+      className={`inline-flex items-center gap-1 ${
+        isUrgent ? 'text-amber-600 dark:text-amber-400' : ''
+      }`}
+      title={`Excluído em ${new Date(deletedAtIso).toLocaleDateString('pt-BR')} — purgado automaticamente em ${retentionDays} dias`}
+    >
+      <Clock className="h-3 w-3" />
+      {daysLeft === 0
+        ? 'expira hoje'
+        : daysLeft === 1
+          ? 'expira amanhã'
+          : `expira em ${daysLeft} dias`}
+    </span>
+  );
 }

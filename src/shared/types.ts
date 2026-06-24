@@ -273,6 +273,11 @@ export type VideoDetail = VideoInfo & {
   transcriptExtractedAt: string | null;
   /** Anotação livre do usuário pra esse vídeo na biblioteca. */
   libraryNotes: string | null;
+  /**
+   * ISO de quando o vídeo foi soft-deleted. Null = vídeo ativo. Usado pra
+   * mostrar "expira em N dias" na lixeira (retention de 30d).
+   */
+  deletedAt: string | null;
 };
 
 // =============================================================================
@@ -386,6 +391,41 @@ export type KanbanThumbnailUpload = {
   /** Base64 (sem prefixo `data:`). Main process decodifica e persiste como BLOB. */
   base64: string;
   mimeType: string;
+};
+
+// =============================================================================
+// Busca global (Header)
+// =============================================================================
+
+export type GlobalSearchHit =
+  | {
+      kind: 'channel';
+      id: string;
+      youtubeId: string;
+      title: string;
+      thumbnailUrl: string | null;
+      subtitle: string | null;
+    }
+  | {
+      kind: 'video';
+      id: string;
+      youtubeId: string;
+      title: string;
+      thumbnailUrl: string | null;
+      subtitle: string | null;
+    }
+  | {
+      kind: 'keyword';
+      id: string;
+      term: string;
+      lastSearchedAt: string | null;
+      scoreValue: number | null;
+    };
+
+export type GlobalSearchResult = {
+  channels: Extract<GlobalSearchHit, { kind: 'channel' }>[];
+  videos: Extract<GlobalSearchHit, { kind: 'video' }>[];
+  keywords: Extract<GlobalSearchHit, { kind: 'keyword' }>[];
 };
 
 export type VideoMetadataExtractionResult = {
@@ -739,6 +779,9 @@ export type IsitubeAPI = {
     list: (filters?: LibraryFilters) => Promise<LibraryItem[]>;
     updateNotes: (videoId: string, notes: string) => Promise<LibraryActionResult>;
     count: () => Promise<number>;
+  };
+  search: {
+    global: (query: string) => Promise<GlobalSearchResult>;
   };
   kanban: {
     getBoard: () => Promise<KanbanBoard>;

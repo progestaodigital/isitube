@@ -64,6 +64,7 @@ type DbVideo = {
   inLibrary: boolean;
   libraryAddedAt: Date | null;
   libraryNotes: string | null;
+  deletedAt: Date | null;
 };
 
 function projectVideoDetail(v: DbVideo): VideoDetail {
@@ -107,6 +108,7 @@ function projectVideoDetail(v: DbVideo): VideoDetail {
     inLibrary: v.inLibrary,
     libraryAddedAt: v.libraryAddedAt?.toISOString() ?? null,
     libraryNotes: v.libraryNotes,
+    deletedAt: v.deletedAt?.toISOString() ?? null,
   };
 }
 
@@ -189,6 +191,18 @@ export async function removeVideos(videoIds: string[]): Promise<number> {
   return result.count;
 }
 
+/**
+ * Lixeira: vídeos soft-deleted permanecem nesse "purgatório" por
+ * TRASH_RETENTION_DAYS antes de serem apagados de vez pelo job
+ * `purgeExpiredDeletedVideos`. O renderer recebe `deletedAt` no projection
+ * pra calcular quantos dias faltam pra expirar.
+ */
+const TRASH_RETENTION_DAYS = 30;
+
+export function getTrashRetentionDays(): number {
+  return TRASH_RETENTION_DAYS;
+}
+
 /** Lista vídeos soft-deleted (ainda no DB, deletedAt != null). */
 export async function listDeletedVideos(): Promise<VideoDetail[]> {
   const videos = await getPrisma().video.findMany({
@@ -206,6 +220,33 @@ export async function restoreVideos(videoIds: string[]): Promise<number> {
   const result = await getPrisma().video.updateMany({
     where: { id: { in: videoIds }, deletedAt: { not: null } },
     data: { deletedAt: null },
+  });
+  return result.count;
+}
+
+/**
+ * Apaga DEFINITIVAMENTE todos os vídeos da lixeira (deletedAt not null).
+ * "Limpar tudo" button no UI. Sem volta.
+ */
+export async function purgeAllDeletedVideos(): Promise<number> {
+  const result = await getPrisma().video.deleteMany({
+    where: { deletedAt: { not: null } },
+  });
+  return result.count;
+}
+
+/**
+ * Auto-cleanup: apaga vídeos soft-deleted há mais de TRASH_RETENTION_DAYS.
+ * Chamada no boot e periodicamente. Idempotente e barato (index em deletedAt
+ * via where com comparação direta).
+ *
+ * Retorna a contagem do que foi apagado pra logging/diagnóstico — silencioso
+ * pra UI (não interrompe o usuário pra avisar "limpei 3 vídeos vencidos").
+ */
+export async function purgeExpiredDeletedVideos(): Promise<number> {
+  const cutoff = new Date(Date.now() - TRASH_RETENTION_DAYS * 86_400_000);
+  const result = await getPrisma().video.deleteMany({
+    where: { deletedAt: { lt: cutoff } },
   });
   return result.count;
 }
