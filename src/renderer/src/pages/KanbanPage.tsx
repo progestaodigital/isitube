@@ -4,13 +4,20 @@ import { Button } from '../components/ui/Button';
 import { useToastStore } from '../stores/toast';
 import { KanbanColumnView } from './kanban/KanbanColumnView';
 import { CardEditorModal } from './kanban/CardEditorModal';
+import { PromptModal } from './kanban/PromptModal';
 import type { KanbanBoard, KanbanCard, KanbanColumn } from '@shared/types';
+
+type ColumnPromptState =
+  | { kind: 'create' }
+  | { kind: 'rename'; column: KanbanColumn }
+  | null;
 
 export function KanbanPage() {
   const showToast = useToastStore((s) => s.show);
   const [board, setBoard] = useState<KanbanBoard | null>(null);
   const [editingCardId, setEditingCardId] = useState<string | null>(null);
   const [draggingCardId, setDraggingCardId] = useState<string | null>(null);
+  const [columnPrompt, setColumnPrompt] = useState<ColumnPromptState>(null);
 
   const refresh = useCallback(async () => {
     setBoard(await window.api.kanban.getBoard());
@@ -31,12 +38,11 @@ export function KanbanPage() {
     return null;
   }, [editingCardId, board]);
 
-  async function handleCreateColumn() {
-    const name = window.prompt('Nome da nova coluna:', 'Nova coluna');
-    if (!name || !name.trim()) return;
+  async function handleCreateColumnConfirm(name: string) {
     try {
-      await window.api.kanban.createColumn(name.trim());
+      await window.api.kanban.createColumn(name);
       await refresh();
+      setColumnPrompt(null);
     } catch (err) {
       showToast({
         kind: 'error',
@@ -46,12 +52,11 @@ export function KanbanPage() {
     }
   }
 
-  async function handleRenameColumn(col: KanbanColumn) {
-    const name = window.prompt('Renomear coluna:', col.name);
-    if (!name || !name.trim() || name.trim() === col.name) return;
+  async function handleRenameColumnConfirm(columnId: string, name: string) {
     try {
-      await window.api.kanban.renameColumn(col.id, name.trim());
+      await window.api.kanban.renameColumn(columnId, name);
       await refresh();
+      setColumnPrompt(null);
     } catch (err) {
       showToast({
         kind: 'error',
@@ -149,7 +154,7 @@ export function KanbanPage() {
             referências da biblioteca. Arrasta cards entre colunas pra mover pelo funil.
           </p>
         </div>
-        <Button onClick={handleCreateColumn} variant="secondary">
+        <Button onClick={() => setColumnPrompt({ kind: 'create' })} variant="secondary">
           <Plus className="h-4 w-4" />
           Nova coluna
         </Button>
@@ -165,7 +170,7 @@ export function KanbanPage() {
                 key={col.id}
                 column={col}
                 draggingCardId={draggingCardId}
-                onRename={() => handleRenameColumn(col)}
+                onRename={() => setColumnPrompt({ kind: 'rename', column: col })}
                 onToggleCollapsed={() => handleToggleCollapsed(col)}
                 onDelete={() => handleDeleteColumn(col)}
                 onCreateCard={() => handleCreateCard(col.id)}
@@ -184,6 +189,30 @@ export function KanbanPage() {
         card={editingCard}
         onClose={() => setEditingCardId(null)}
         onChanged={refresh}
+      />
+
+      <PromptModal
+        open={columnPrompt?.kind === 'create'}
+        title="Nova coluna"
+        description="Dê um nome pra essa coluna (ex.: Em produção, Gravando, Postado)."
+        placeholder="Nome da coluna"
+        initialValue="Nova coluna"
+        confirmLabel="Criar"
+        onConfirm={handleCreateColumnConfirm}
+        onClose={() => setColumnPrompt(null)}
+      />
+
+      <PromptModal
+        open={columnPrompt?.kind === 'rename'}
+        title="Renomear coluna"
+        initialValue={columnPrompt?.kind === 'rename' ? columnPrompt.column.name : ''}
+        confirmLabel="Salvar"
+        onConfirm={(name) => {
+          if (columnPrompt?.kind === 'rename') {
+            handleRenameColumnConfirm(columnPrompt.column.id, name);
+          }
+        }}
+        onClose={() => setColumnPrompt(null)}
       />
     </div>
   );
