@@ -2,7 +2,6 @@ import { app, shell } from 'electron';
 import { spawn } from 'node:child_process';
 import { writeFile, mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
-import { getCredentialPlainText, getCredentialStatus } from './credentials';
 
 const REPO = 'progestaodigital/isitube';
 
@@ -35,52 +34,25 @@ export type ReleaseSummary = {
 };
 
 /**
- * Retorna o header de autenticação ideal pra essa requisição: usa o PAT do
- * usuário se ele tem um cadastrado e válido (rate limit autenticado = 5000
- * req/h por user), senão volta pra request anônima (60 req/h por IP).
+ * Headers anônimos pra GitHub API. Sem Authorization de propósito.
  *
- * O repo `progestaodigital/isitube` é público — anônimo dá conta do
- * auto-update normal (1-2 req por boot). Se o usuário configurou PAT pra
- * backup, aproveitamos pra ganhar rate limit folgado.
+ * Antigamente esses endpoints injetavam o PAT do usuário "de bônus" pra
+ * ganhar rate limit (60 req/h anônimo vs 5000 req/h autenticado). Resultado:
+ * sempre que o PAT do usuário expirava (PATs têm expiração default de 30/
+ * 90 dias) ou era revogado, o auto-update voltava 401 — quebrando uma
+ * função que deveria funcionar sem auth nenhuma porque o repo é público.
+ *
+ * Decisão definitiva: NUNCA autenticar pros endpoints de update. Rate
+ * limit anônimo cobre o uso real (1-2 req por boot do app + check manual
+ * ocasional). PAT continua sendo usado SÓ pelo módulo de backup, onde
+ * autenticação é obrigatória.
  */
-function buildAnonHeaders(): Record<string, string> {
+function githubHeaders(extra?: Record<string, string>): Record<string, string> {
   return {
     Accept: 'application/vnd.github+json',
     'X-GitHub-Api-Version': '2022-11-28',
+    ...extra,
   };
-}
-
-async function buildGithubHeaders(): Promise<Record<string, string>> {
-  const base = buildAnonHeaders();
-
-  const status = await getCredentialStatus('github');
-  if (!status?.hasValue || status.status !== 'valid') return base;
-  const pat = await getCredentialPlainText('github');
-  if (!pat) return base;
-  return { ...base, Authorization: `Bearer ${pat}` };
-}
-
-/**
- * fetch que tenta com PAT (rate limit folgado) e, se voltar 401, refaz sem
- * auth. Mantém o app funcionando mesmo se o PAT do usuário expirou/foi
- * revogado — o que vai acontecer eventualmente porque GitHub PATs têm
- * expiração padrão de 30/90 dias.
- *
- * Só faz fallback em endpoints públicos (releases listing/latest). Download
- * de asset também é público mas a URL final é signed, então 401 ali também
- * é caso de fallback anônimo.
- */
-async function githubFetch(url: string, extraHeaders?: Record<string, string>): Promise<Response> {
-  const authed = await buildGithubHeaders();
-  const headers = { ...authed, ...extraHeaders };
-  let res = await fetch(url, { headers, redirect: 'follow' });
-  if (res.status === 401 && 'Authorization' in headers) {
-    // PAT inválido — refaz anônimo. Repo é público então isso resolve.
-    const { Authorization: _ignored, ...anonHeaders } = headers;
-    void _ignored;
-    res = await fetch(url, { headers: anonHeaders, redirect: 'follow' });
-  }
-  return res;
 }
 
 /**
@@ -110,8 +82,9 @@ export async function checkForUpdates(): Promise<UpdateCheckResult> {
   };
 
   try {
-    const res = await githubFetch(
-      `https://api.github.com/repos/${REPO}/releases/latest`
+    const res = await fetch(
+      `https://api.github.com/repos/${REPO}/releases/latest`,
+      { headers: githubHeaders(), redirect: 'follow' }
     );
 
     if (res.status === 404) {
@@ -173,8 +146,9 @@ export async function listAllReleases(): Promise<{
 }> {
   const currentVersion = app.getVersion();
   try {
-    const res = await githubFetch(
-      `https://api.github.com/repos/${REPO}/releases?per_page=50`
+    const res = await fetch(
+      `https://api.github.com/repos/${REPO}/releases?per_page=50`,
+      { headers: githubHeaders(), redirect: 'follow' }
     );
 
     if (!res.ok) {
@@ -239,11 +213,14 @@ export async function downloadAndInstall(
 ): Promise<{ success: boolean; message: string }> {
   try {
     // Pra download do asset, override do Accept pra octet-stream (redireciona
-    // pro signed URL no S3 do GitHub). githubFetch já faz fallback anônimo
-    // se o PAT do usuário tiver expirado.
-    const res = await githubFetch(
+    // pro signed URL no S3 do GitHub). Anônimo funciona porque os assets de
+    // um repo público também são públicos.
+    const res = await fetch(
       `https://api.github.com/repos/${REPO}/releases/assets/${assetId}`,
-      { Accept: 'application/octet-stream' }
+      {
+        headers: githubHeaders({ Accept: 'application/octet-stream' }),
+        redirect: 'follow',
+      }
     );
 
     if (!res.ok) {
