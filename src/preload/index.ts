@@ -19,6 +19,12 @@ import type {
   LibraryActionResult,
   LibraryFilters,
   LibraryItem,
+  KanbanBoard,
+  KanbanCard,
+  KanbanCardPatch,
+  KanbanColumn,
+  KanbanReferenceType,
+  KanbanThumbnailUpload,
   KeywordIdeasResult,
   KeywordResult,
   KeywordSearchOptions,
@@ -216,6 +222,42 @@ const api: IsitubeAPI = {
     updateNotes: (videoId: string, notes: string): Promise<LibraryActionResult> =>
       ipcRenderer.invoke('library:update-notes', videoId, notes),
     count: (): Promise<number> => ipcRenderer.invoke('library:count'),
+  },
+
+  kanban: {
+    getBoard: (): Promise<KanbanBoard> => ipcRenderer.invoke('kanban:get-board'),
+    createColumn: (name: string): Promise<KanbanColumn> =>
+      ipcRenderer.invoke('kanban:create-column', name),
+    renameColumn: (columnId: string, name: string): Promise<void> =>
+      ipcRenderer.invoke('kanban:rename-column', columnId, name),
+    toggleColumnCollapsed: (columnId: string, collapsed: boolean): Promise<void> =>
+      ipcRenderer.invoke('kanban:toggle-column-collapsed', columnId, collapsed),
+    deleteColumn: (columnId: string): Promise<void> =>
+      ipcRenderer.invoke('kanban:delete-column', columnId),
+    reorderColumns: (columnIds: string[]): Promise<void> =>
+      ipcRenderer.invoke('kanban:reorder-columns', columnIds),
+    createCard: (columnId: string, title?: string): Promise<KanbanCard> =>
+      ipcRenderer.invoke('kanban:create-card', columnId, title ?? ''),
+    updateCard: (cardId: string, patch: KanbanCardPatch): Promise<KanbanCard> =>
+      ipcRenderer.invoke('kanban:update-card', cardId, patch),
+    moveCard: (cardId: string, toColumnId: string, toPosition: number): Promise<void> =>
+      ipcRenderer.invoke('kanban:move-card', cardId, toColumnId, toPosition),
+    deleteCard: (cardId: string): Promise<void> =>
+      ipcRenderer.invoke('kanban:delete-card', cardId),
+    addThumbnail: (cardId: string, upload: KanbanThumbnailUpload): Promise<KanbanCard> =>
+      ipcRenderer.invoke('kanban:add-thumbnail', cardId, upload),
+    deleteThumbnail: (thumbnailId: string): Promise<KanbanCard> =>
+      ipcRenderer.invoke('kanban:delete-thumbnail', thumbnailId),
+    setCoverThumbnail: (thumbnailId: string): Promise<KanbanCard> =>
+      ipcRenderer.invoke('kanban:set-cover-thumbnail', thumbnailId),
+    addReference: (
+      cardId: string,
+      videoId: string,
+      refType: KanbanReferenceType
+    ): Promise<KanbanCard> =>
+      ipcRenderer.invoke('kanban:add-reference', cardId, videoId, refType),
+    removeReference: (referenceId: string): Promise<KanbanCard> =>
+      ipcRenderer.invoke('kanban:remove-reference', referenceId),
   },
 
   transcripts: {

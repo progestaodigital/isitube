@@ -9,6 +9,7 @@ import { HistoryList } from './keywords/HistoryList';
 import { HelpDialog } from './keywords/HelpDialog';
 import { SuggestionsPanel } from './keywords/SuggestionsPanel';
 import { IdeaGenerator } from '../components/keywords/IdeaGenerator';
+import { useRouterStore } from '../stores/router';
 
 export function KeywordsPage() {
   const [busy, setBusy] = useState(false);
@@ -31,6 +32,18 @@ export function KeywordsPage() {
     refreshHistory();
     refreshStatuses();
   }, [refreshHistory, refreshStatuses]);
+
+  // Deep-link: se o Kanban (ou outra rota) pediu pra abrir um termo, dispara
+  // a busca uma vez e consome o flag pra não repetir no próximo mount.
+  const pendingTerm = useRouterStore((s) => s.pendingKeywordSearch);
+  const consumePending = useRouterStore((s) => s.consumePendingKeywordSearch);
+  useEffect(() => {
+    if (pendingTerm) {
+      runSearch(pendingTerm);
+      consumePending();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingTerm]);
 
   const runSearch = useCallback(
     async (term: string, forceRefresh = false) => {

@@ -4,6 +4,7 @@ import { ChannelsPage } from './pages/ChannelsPage';
 import { KeywordsPage } from './pages/KeywordsPage';
 import { VideosPage } from './pages/VideosPage';
 import { LibraryPage } from './pages/LibraryPage';
+import { KanbanPage } from './pages/KanbanPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { HelpPage } from './pages/HelpPage';
 
@@ -21,6 +22,8 @@ export function Router() {
       return <VideosPage />;
     case 'library':
       return <LibraryPage />;
+    case 'kanban':
+      return <KanbanPage />;
     case 'settings':
       return <SettingsPage />;
     case 'help':

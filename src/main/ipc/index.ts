@@ -6,6 +6,7 @@ import { registerChannelsHandlers } from './channels';
 import { registerScheduleHandlers } from './schedule';
 import { registerVideosHandlers } from './videos';
 import { registerLibraryHandlers } from './library';
+import { registerKanbanHandlers } from './kanban';
 import { registerTranscriptsHandlers } from './transcripts';
 import { registerLicenseHandlers } from './license';
 import { registerDialogHandlers } from './dialog';
@@ -25,6 +26,7 @@ export function registerIpcHandlers(): void {
   registerScheduleHandlers();
   registerVideosHandlers();
   registerLibraryHandlers();
+  registerKanbanHandlers();
   registerTranscriptsHandlers();
   registerLicenseHandlers();
   registerDialogHandlers();

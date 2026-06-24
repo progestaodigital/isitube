@@ -61,6 +61,8 @@ model Keyword {
   lastSearchedAt DateTime?       @map("last_searched_at")
   searchCount    Int             @default(0) @map("search_count")
   searches       KeywordSearch[]
+  // Cards do Kanban que apontam pra essa keyword (palavra-chave principal).
+  kanbanCards    KanbanCard[]
 
   createdAt DateTime  @default(now()) @map("created_at")
   updatedAt DateTime  @updatedAt @map("updated_at")
@@ -205,7 +207,8 @@ model Video {
   libraryAddedAt  DateTime? @map("library_added_at")
   libraryNotes    String?   @map("library_notes")
 
-  snapshots VideoSnapshot[]
+  snapshots        VideoSnapshot[]
+  kanbanReferences KanbanCardReference[]
 
   createdAt DateTime  @default(now()) @map("created_at")
   updatedAt DateTime  @updatedAt @map("updated_at")
@@ -318,4 +321,91 @@ model ScheduledUpdate {
 
   @@index([active, scheduledAt])
   @@map("scheduled_updates")
+}
+
+// =============================================================================
+// Kanban (Module 6) — board único de planejamento de vídeos.
+//
+// Modelo: N colunas ordenadas → N cards ordenados por coluna. Card carrega
+// título, palavra-chave principal (com link opcional pra análise cacheada),
+// secundárias, roteiro, N thumbnails (uma marcada como cover) e referências
+// linkadas a vídeos da biblioteca (cada uma tipada como 'thumb'|'titulo'|
+// 'roteiro' pra explicar pra que serve a referência).
+// =============================================================================
+
+model KanbanColumn {
+  id        String       @id @default(uuid())
+  name      String
+  position  Int
+  collapsed Boolean      @default(false)
+  cards     KanbanCard[]
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  syncedAt  DateTime? @map("synced_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  @@index([position])
+  @@map("kanban_columns")
+}
+
+model KanbanCard {
+  id                String       @id @default(uuid())
+  columnId          String       @map("column_id")
+  column            KanbanColumn @relation(fields: [columnId], references: [id], onDelete: Cascade)
+  position          Int
+  title             String       @default("")
+  // Palavra-chave principal — texto livre. Quando bate com uma Keyword
+  // já analisada, linkedKeywordId aponta pra ela pra dar atalho à análise.
+  mainKeyword       String?      @map("main_keyword")
+  linkedKeywordId   String?      @map("linked_keyword_id")
+  linkedKeyword     Keyword?     @relation(fields: [linkedKeywordId], references: [id], onDelete: SetNull)
+  secondaryKeywords String?      @map("secondary_keywords") // JSON array of strings
+  script            String?
+
+  thumbnails KanbanCardThumbnail[]
+  references KanbanCardReference[]
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  syncedAt  DateTime? @map("synced_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  @@index([columnId, position])
+  @@index([linkedKeywordId])
+  @@map("kanban_cards")
+}
+
+model KanbanCardThumbnail {
+  id       String     @id @default(uuid())
+  cardId   String     @map("card_id")
+  card     KanbanCard @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  position Int        @default(0)
+  // Bytes da imagem + mime type. Tamanhos típicos: 100kB-1MB.
+  data     Bytes
+  mimeType String     @map("mime_type")
+  // Só uma thumbnail por card deve ter isCover=true. Service garante.
+  isCover  Boolean    @default(false) @map("is_cover")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([cardId, position])
+  @@map("kanban_card_thumbnails")
+}
+
+model KanbanCardReference {
+  id      String     @id @default(uuid())
+  cardId  String     @map("card_id")
+  card    KanbanCard @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  videoId String     @map("video_id")
+  video   Video      @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  // 'thumb' | 'titulo' | 'roteiro' — o mesmo vídeo pode ser linkado várias
+  // vezes desde que com tipos diferentes (unique constraint cobre isso).
+  refType String     @map("ref_type")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@unique([cardId, videoId, refType])
+  @@index([videoId])
+  @@map("kanban_card_references")
 }

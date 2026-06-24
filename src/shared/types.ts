@@ -303,6 +303,91 @@ export type LibraryActionResult = {
   inLibrary: boolean;
 };
 
+// =============================================================================
+// Kanban (Module 6)
+// =============================================================================
+
+export type KanbanReferenceType = 'thumb' | 'titulo' | 'roteiro';
+
+export type KanbanCardThumbnail = {
+  id: string;
+  position: number;
+  isCover: boolean;
+  /** Data URL (`data:image/png;base64,...`) já montada pelo main process. */
+  dataUrl: string;
+  mimeType: string;
+};
+
+export type KanbanCardReference = {
+  id: string;
+  videoId: string;
+  refType: KanbanReferenceType;
+  /** Snapshot do vídeo referenciado (suficiente pro card e pro pré-modal). */
+  videoTitle: string;
+  videoThumbnailUrl: string | null;
+  videoChannelTitle: string | null;
+};
+
+/**
+ * Análise de palavra-chave linkada ao card. `cached: false` significa que
+ * o termo nunca foi pesquisado — UI mostra CTA "Analisar agora".
+ */
+export type KanbanCardKeywordAnalysis = {
+  cached: true;
+  keywordId: string;
+  term: string;
+  scoreValue: number | null;
+  /** ISO da última search registrada. Útil pra mostrar "analisada há 3 dias". */
+  searchedAt: string;
+} | {
+  cached: false;
+  /** Termo digitado pelo usuário — caso queira disparar uma análise. */
+  term: string;
+};
+
+export type KanbanCard = {
+  id: string;
+  columnId: string;
+  position: number;
+  title: string;
+  mainKeyword: string | null;
+  /** Lookup automático: presente quando há análise cacheada pro mainKeyword. */
+  keywordAnalysis: KanbanCardKeywordAnalysis | null;
+  secondaryKeywords: string[];
+  script: string | null;
+  thumbnails: KanbanCardThumbnail[];
+  references: KanbanCardReference[];
+  /** Pra economizar render — id da thumbnail marcada como capa, ou null. */
+  coverThumbnailId: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type KanbanColumn = {
+  id: string;
+  name: string;
+  position: number;
+  collapsed: boolean;
+  cards: KanbanCard[];
+};
+
+export type KanbanBoard = {
+  columns: KanbanColumn[];
+};
+
+export type KanbanCardPatch = {
+  title?: string;
+  mainKeyword?: string | null;
+  secondaryKeywords?: string[];
+  script?: string | null;
+};
+
+export type KanbanThumbnailUpload = {
+  /** Base64 (sem prefixo `data:`). Main process decodifica e persiste como BLOB. */
+  base64: string;
+  mimeType: string;
+};
+
 export type VideoMetadataExtractionResult = {
   success: boolean;
   message: string;
@@ -654,6 +739,27 @@ export type IsitubeAPI = {
     list: (filters?: LibraryFilters) => Promise<LibraryItem[]>;
     updateNotes: (videoId: string, notes: string) => Promise<LibraryActionResult>;
     count: () => Promise<number>;
+  };
+  kanban: {
+    getBoard: () => Promise<KanbanBoard>;
+    createColumn: (name: string) => Promise<KanbanColumn>;
+    renameColumn: (columnId: string, name: string) => Promise<void>;
+    toggleColumnCollapsed: (columnId: string, collapsed: boolean) => Promise<void>;
+    deleteColumn: (columnId: string) => Promise<void>;
+    reorderColumns: (columnIds: string[]) => Promise<void>;
+    createCard: (columnId: string, title?: string) => Promise<KanbanCard>;
+    updateCard: (cardId: string, patch: KanbanCardPatch) => Promise<KanbanCard>;
+    moveCard: (cardId: string, toColumnId: string, toPosition: number) => Promise<void>;
+    deleteCard: (cardId: string) => Promise<void>;
+    addThumbnail: (cardId: string, upload: KanbanThumbnailUpload) => Promise<KanbanCard>;
+    deleteThumbnail: (thumbnailId: string) => Promise<KanbanCard>;
+    setCoverThumbnail: (thumbnailId: string) => Promise<KanbanCard>;
+    addReference: (
+      cardId: string,
+      videoId: string,
+      refType: KanbanReferenceType
+    ) => Promise<KanbanCard>;
+    removeReference: (referenceId: string) => Promise<KanbanCard>;
   };
   transcripts: {
     get: (videoId: string) => Promise<VideoTranscript | null>;

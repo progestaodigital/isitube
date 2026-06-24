@@ -5,6 +5,7 @@ import {
   Search,
   FileText,
   BookMarked,
+  KanbanSquare,
   Settings,
   HelpCircle,
   type LucideIcon,
@@ -24,6 +25,7 @@ const navItems: NavItem[] = [
   { icon: Search, label: 'Palavras-chave', view: 'keywords' },
   { icon: FileText, label: 'Vídeos', view: 'videos' },
   { icon: BookMarked, label: 'Biblioteca', view: 'library' },
+  { icon: KanbanSquare, label: 'Kanban', view: 'kanban' },
   { icon: Settings, label: 'Configurações', view: 'settings' },
   { icon: HelpCircle, label: 'Ajuda', view: 'help' },
 ];
