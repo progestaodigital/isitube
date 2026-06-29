@@ -11,6 +11,8 @@
     "build:win": "electron-vite build && electron-builder --win --config.npmRebuild=false",
     "preview": "electron-vite preview",
     "typecheck": "tsc --build",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "postinstall": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:studio": "prisma studio",
@@ -48,7 +50,8 @@
     "prisma": "^6.19.3",
     "tailwindcss": "^4.0.0",
     "typescript": "^5.7.2",
-    "vite": "^5.4.10"
+    "vite": "^5.4.10",
+    "vitest": "^4.1.9"
   },
   "build": {
     "appId": "com.isi.isitube",

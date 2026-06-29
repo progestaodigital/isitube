@@ -3,7 +3,7 @@
 > Software desktop de inteligência competitiva e planejamento de conteúdo para criadores no YouTube.
 > Stack: Electron + React + TypeScript + Vite + Prisma + SQLite + Vercel AI SDK + Claude.
 
-**Status atual:** Fase 10 concluída (autocomplete real + telemetria por provider + tela de Status + limpeza de mocks dead-code) · Lançado em 17/05/2026 como v0.4.0 · Próxima: a definir
+**Status atual:** Fase 11 concluída (entitlement assinado Ed25519 na validação de licença — verificação criptográfica com fallback legado + suíte vitest) · Base v0.6.2 · Próxima: a definir
 **Início:** Maio de 2026 · **MVP previsto:** 9-12 semanas
 
 ---
@@ -38,6 +38,9 @@ Estas regras valem em **todas as fases** e não devem ser quebradas sem decisão
 | 8a | Wire up real: Anthropic + YouTube | ✅ feito | Real API calls + validação real + UX "configure chave" |
 | 9 | Licenciamento real + proxy isipanel + two-slug | ✅ feito | IsiPanel validate + proxy server-side Anthropic/YouTube + plano Iniciante/Pro (v0.3.0) |
 | 10 | Polish dos providers reais + autocomplete + tela de Status | ✅ feito | Autocomplete real do YouTube + Trends rate-limit cooldown + telemetria por provider + tela "Status das integrações" (v0.4.0) |
+| 11 | Entitlement assinado (Ed25519) na validação de licença | ✅ feito | Verificação criptográfica do token do isipanel — gating confia só no JWT assinado quando presente; aditivo e com fallback pro JSON legado |
+
+> Nota: as versões entre v0.4.0 e v0.6.2 (lixeira/retention, busca global, auto-update) não foram documentadas como fases neste arquivo. A Fase 11 retoma o registro a partir do trabalho de hardening de licença.
 
 ---
 
@@ -517,6 +520,39 @@ Estas regras valem em **todas as fases** e não devem ser quebradas sem decisão
 **Lançado como v0.4.0** em 17/05/2026.
 
 ---
+
+## Fase 11 — Entitlement assinado (Ed25519) na validação de licença ✅
+
+**Objetivo:** Endurecer o licenciamento da Fase 9. Até aqui o app confiava no JSON puro de `POST /v1/license/validate`. Um `{ status: "valid" }` adulterado ou interceptado (MITM) era aceito como verdade. O isipanel passou a incluir — **só na resposta `valid`** — um campo opcional `entitlement`: um JWT compacto assinado em Ed25519/EdDSA. Quando presente, o app confia **criptograficamente** no resultado em vez de no JSON.
+
+**Entregue:**
+- Novo módulo `src/main/services/license/entitlement.ts` — verificação EdDSA com o `crypto` nativo do Node (zero dependência nova). Chave pública embarcada como SPKI PEM, carregada via `crypto.createPublicKey`, verificada com `crypto.verify(null, msg, key, sig)`.
+- Mapa `{ kid -> KeyObject }` para suportar **rotação** de chave. PROD (`isi-ed25519-prod-2026-06`) sempre carrega; a chave DEV só carrega quando `!app.isPackaged` (nunca vai no build de release). Construção do mapa é lazy (não roda no load do módulo).
+- `verifyEntitlement()` segue a ordem: split → header/`kid` → assinatura → claims → `status==='valid'` → `iss==='isipanel'` → `exp`/`iat` (skew de 90s) → `hwid` local → `product_slug` === slug que validou → `edition`.
+- Integração em `isipanel.ts`: campo opcional `entitlement?` no payload `valid` + helper `resolveValid()` que centraliza os 3 pontos de tratamento de `valid`. Quando o token é confiável, o `plan` salvo vem da `edition` **assinada** (não mais inferido do slug), então `getActivePlan()` e todos os seletores a jusante passam a confiar no token.
+
+**Regras de comportamento (aditivo, nunca obrigatório):**
+- **Token ausente** → comportamento legado: confia no JSON, plano pelo slug. Nunca falha duro (servidor antigo / chave não configurada).
+- **Token presente e válido** → gating só pela `edition` assinada.
+- **Token presente e inválido** (assinatura/binding) → `status:'invalid'` bloqueia, **sem tocar o cache** (o servidor real está ok; aquela resposta é suspeita).
+- **Edition divergente do slug** (com assinatura válida = bug de servidor, não ataque) → não bloqueia; faz *clamp* pro tier mais restritivo entre (claimed, expected) e loga. Nunca concede acima do esperado.
+
+**Decisões importantes:**
+- **Binding ao slug pedido** (confirmado com o painel): o token traz o `product_slug` real do produto (`isitube`/`iniciante` ou `isitubepro`/`pro`), igual ao slug enviado na request. A verificação exige `product_slug === slug que validou` (reject estrito em divergência).
+- **`crypto` nativo, não `jose`.** Ed25519 é suportado direto pelo Node; SPKI PEM é o formato mais simples de embarcar e o que o painel já forneceu.
+- **Higiene de log:** nunca loga token inteiro, license_key, nem hwid completo (mascarado `abcdef…wxyz`).
+
+**Test runner introduzido nesta fase:** o projeto não tinha `vitest`/`jest`. Adicionado `vitest` + `vitest.config.ts` + scripts `test`/`test:watch`. Suíte `src/main/services/license/entitlement.test.ts` (21 testes) cobre assinatura ok/adulterada, kid desconhecido, alg confusion, expirado, iat no futuro, hwid/produto divergente, clamp de edition, token ausente→fallback, e consistência da pubkey PROD embarcada. **A suíte já pegou um bug real**: um TDZ (`const` lido antes de inicializar) que crasharia o módulo no import — corrigido tornando a construção do mapa de chaves lazy.
+
+**Arquivos-chave:**
+- Novo: `src/main/services/license/entitlement.ts`, `src/main/services/license/entitlement.test.ts`, `vitest.config.ts`
+- Refator: `src/main/services/license/isipanel.ts` (campo `entitlement`, `resolveValid`, plano vindo da edition assinada), `src/main/services/license/storage.ts` (sem mudança de schema — `planOverride` é em memória)
+- Config: `package.json` (vitest + scripts), `tsconfig.node.json` (exclui `**/*.test.ts` do build)
+
+**Como testar:**
+1. `npm test` → 21 testes passam.
+2. `npm run dev` com servidor que **não** manda `entitlement` → app funciona igual a hoje (fallback legado).
+3. Servidor mandando token válido → gating pela edition assinada; token adulterado/MITM → app bloqueia com "Não foi possível verificar a assinatura da licença".
 
 ---
 

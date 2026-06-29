@@ -10,10 +10,12 @@ import { app } from 'electron';
 import type { LicenseInfo, LicensePlan, LicenseStatus } from '@shared/types';
 import type { LicenseProvider } from './types';
 import { getHwid } from './hwid';
+import { verifyEntitlement } from './entitlement';
 import {
   clearStoredLicense,
   loadStoredLicense,
   saveStoredLicense,
+  type LicensePlanKey,
   type LicenseSlug,
   type StoredLicense,
 } from './storage';
@@ -43,6 +45,12 @@ type ValidatePayload =
       hwid_bound: boolean;
       subscription_url: string | null;
       support_url: string | null;
+      /**
+       * OPTIONAL signed entitlement (EdDSA/JWT). Present only on `valid` from a
+       * panel new enough to issue it. When present we trust ONLY the signed
+       * claims for gating; when absent we keep the legacy JSON-based behavior.
+       */
+      entitlement?: string;
     }
   | {
       status: 'invalid';
@@ -158,13 +166,16 @@ function storedFromValid(
   payload: Extract<ValidatePayload, { status: 'valid' }>,
   licenseKey: string,
   hwid: string,
-  slug: LicenseSlug
+  slug: LicenseSlug,
+  // When the signed entitlement is trusted, the plan comes from its `edition`
+  // claim instead of being inferred from the slug. Falls back to the slug.
+  planOverride?: LicensePlanKey
 ): StoredLicense {
   return {
     licenseKey,
     hwid,
     slug,
-    plan: planFromSlug(slug) === 'iniciante' ? 'iniciante' : 'pro',
+    plan: planOverride ?? planFromSlug(slug),
     expiresAt: payload.expires_at ? new Date(payload.expires_at) : null,
     graceUntil: payload.grace_until ? new Date(payload.grace_until) : null,
     subscriptionUrl: payload.subscription_url,
@@ -235,9 +246,7 @@ export class IsiPanelLicenseProvider implements LicenseProvider {
     const body = primary.body;
 
     if (body.status === 'valid') {
-      const updated = storedFromValid(body, stored.licenseKey, hwid, stored.slug);
-      await saveStoredLicense(updated);
-      return infoFromStored(updated);
+      return this.resolveValid(body, stored.licenseKey, hwid, stored.slug);
     }
 
     if (body.status === 'invalid') {
@@ -254,14 +263,7 @@ export class IsiPanelLicenseProvider implements LicenseProvider {
 
       const rediscoverBody = rediscover.outcome.body;
       if (rediscoverBody.status === 'valid') {
-        const updated = storedFromValid(
-          rediscoverBody,
-          stored.licenseKey,
-          hwid,
-          rediscover.slug
-        );
-        await saveStoredLicense(updated);
-        return infoFromStored(updated);
+        return this.resolveValid(rediscoverBody, stored.licenseKey, hwid, rediscover.slug);
       }
 
       // Both slugs reject the key → truly invalid. Wipe cache.
@@ -299,9 +301,7 @@ export class IsiPanelLicenseProvider implements LicenseProvider {
     const body = outcome.body;
 
     if (body.status === 'valid') {
-      const stored = storedFromValid(body, licenseKey, hwid, slug);
-      await saveStoredLicense(stored);
-      return infoFromStored(stored);
+      return this.resolveValid(body, licenseKey, hwid, slug);
     }
 
     if (body.status === 'invalid') {
@@ -318,6 +318,43 @@ export class IsiPanelLicenseProvider implements LicenseProvider {
 
   async clear(): Promise<void> {
     await clearStoredLicense();
+  }
+
+  /**
+   * Handle a `valid` validate response. Verifies the optional signed
+   * entitlement, then persists and returns the resulting LicenseInfo.
+   *
+   *  - entitlement ABSENT  → legacy behavior: trust the JSON, plan from slug.
+   *  - entitlement TRUSTED → gate off the signed `edition` claim.
+   *  - entitlement REJECTED → present but failed crypto/binding: refuse to
+   *    grant access (defends against a tampered / MITM'd `valid`). We leave any
+   *    existing cache untouched — the real server is fine; this reply is suspect.
+   */
+  private async resolveValid(
+    body: Extract<ValidatePayload, { status: 'valid' }>,
+    licenseKey: string,
+    hwid: string,
+    slug: LicenseSlug
+  ): Promise<LicenseInfo> {
+    const outcome = verifyEntitlement({
+      token: body.entitlement,
+      hwid,
+      slug,
+      nowEpoch: Math.floor(Date.now() / 1000),
+    });
+
+    if (outcome.kind === 'rejected') {
+      return {
+        ...emptyInfo(),
+        status: 'invalid',
+        reason: 'Não foi possível verificar a assinatura da licença. Tente novamente.',
+      };
+    }
+
+    const planOverride = outcome.kind === 'trusted' ? outcome.edition : undefined;
+    const updated = storedFromValid(body, licenseKey, hwid, slug, planOverride);
+    await saveStoredLicense(updated);
+    return infoFromStored(updated);
   }
 
   /**
