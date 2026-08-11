@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
+import { ExportMenu } from '../components/export/ExportMenu';
 import { useVideoDetailStore } from '../stores/videoDetail';
 import { useToastStore } from '../stores/toast';
 import type {
@@ -141,6 +142,12 @@ export function LibraryPage() {
             </span>
           </>
         )}
+        <ExportMenu
+          items={items}
+          filePrefix="biblioteca"
+          origin="biblioteca"
+          className="ml-auto"
+        />
       </Card>
 
       <Card className="p-3">

@@ -3,6 +3,7 @@ import { FileText, Flame, Filter as FilterIcon, Trash2 } from 'lucide-react';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Checkbox } from '../components/ui/Checkbox';
+import { ExportMenu } from '../components/export/ExportMenu';
 import { useVideoDetailStore } from '../stores/videoDetail';
 import { useToastStore } from '../stores/toast';
 import type { ChannelInfo, ExtractedVideosFilters, VideoDetail } from '@shared/types';
@@ -103,12 +104,15 @@ export function VideosPage() {
 
   return (
     <div className="mx-auto max-w-6xl space-y-5 px-6 py-8">
-      <header>
-        <h1 className="text-2xl font-semibold tracking-tight">Vídeos</h1>
-        <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
-          Vídeos com informações completas extraídas — descrição, tags, thumbnail HD. Tudo
-          armazenado localmente, acessível offline.
-        </p>
+      <header className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">Vídeos</h1>
+          <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
+            Vídeos com informações completas extraídas — descrição, tags, thumbnail HD. Tudo
+            armazenado localmente, acessível offline.
+          </p>
+        </div>
+        <ExportMenu items={videos} filePrefix="videos" origin="videos" />
       </header>
 
       <Card className="p-3">
