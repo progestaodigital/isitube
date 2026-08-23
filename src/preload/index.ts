@@ -73,6 +73,7 @@ import type {
   YoutubeConnectionStatus,
   YoutubeConnectResult,
   YoutubeChannelSummary,
+  YoutubeInsights,
   ChannelAuditResult,
 } from '@shared/types';
 
@@ -368,6 +369,8 @@ const api: IsitubeAPI = {
     disconnect: (): Promise<void> => ipcRenderer.invoke('youtube:disconnect'),
     getSummary: (days: number): Promise<YoutubeChannelSummary> =>
       ipcRenderer.invoke('youtube:get-summary', days),
+    getInsights: (days: number): Promise<YoutubeInsights> =>
+      ipcRenderer.invoke('youtube:get-insights', days),
     audit: (days: number): Promise<ChannelAuditResult> =>
       ipcRenderer.invoke('youtube:audit', days),
   },

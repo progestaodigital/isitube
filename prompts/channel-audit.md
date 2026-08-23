@@ -5,7 +5,9 @@ Analise com rigor e devolva um diagnóstico acionável, em português brasileiro
 - visualizações, tempo de exibição (`estimatedMinutesWatched`), inscritos ganhos/perdidos;
 - engajamento (curtidas, comentários, compartilhamentos vs visualizações);
 - receita estimada, quando presente;
-- a TENDÊNCIA do período atual vs o anterior (melhorou? piorou? em quê?).
+- a TENDÊNCIA do período atual vs o anterior (melhorou? piorou? em quê?);
+- os `topVideos` (retenção por vídeo em `averageViewPercentage`): compare os que retêm bem vs mal e diga o que os melhores parecem ter em comum; cite títulos/números;
+- as `trafficSources` (de onde vêm as views): aponte dependências e oportunidades — ex.: pouca "Busca do YouTube" = SEO fraco a explorar; muito "Vídeos sugeridos" = bom sinal do algoritmo; forte "Feed / inscritos" com pouco "Sugeridos" = alcance preso na base atual.
 
 Se `impressions` ou `impressionCtr` vierem `null`, NÃO comente a ausência — a API pública do YouTube simplesmente não expõe esses dois (só existem no Studio). Não trate isso como problema do canal.
 

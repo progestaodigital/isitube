@@ -1,5 +1,11 @@
 import { getAccessToken } from './index';
-import type { YoutubeChannelSummary } from '@shared/types';
+import { getCredentialPlainText } from '../credentials';
+import type {
+  YoutubeChannelSummary,
+  YoutubeInsights,
+  YoutubeTopVideo,
+  YoutubeTrafficSource,
+} from '@shared/types';
 
 const BASE = 'https://youtubeanalytics.googleapis.com/v2/reports';
 
@@ -118,4 +124,132 @@ export async function getChannelSummary(
     impressionCtr,
     timeSeries,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Insights aprofundados: top vídeos (retenção por vídeo) + fontes de tráfego
+// ---------------------------------------------------------------------------
+
+const TRAFFIC_LABELS: Record<string, string> = {
+  YT_SEARCH: 'Busca do YouTube',
+  RELATED_VIDEO: 'Vídeos sugeridos',
+  SUBSCRIBER: 'Feed / inscritos',
+  YT_CHANNEL: 'Página do canal',
+  PLAYLIST: 'Playlists',
+  YT_PLAYLIST_PAGE: 'Página de playlist',
+  EXT_URL: 'Sites externos',
+  NOTIFICATION: 'Notificações',
+  SHORTS: 'Feed de Shorts',
+  END_SCREEN: 'Telas finais',
+  ANNOTATION: 'Cards / anotações',
+  CAMPAIGN_CARD: 'Cards',
+  NO_LINK_EMBEDDED: 'Players incorporados',
+  NO_LINK_OTHER: 'Outros (direto)',
+  HASHTAGS: 'Hashtags',
+  YT_OTHER_PAGE: 'Outras páginas do YouTube',
+  ADVERTISING: 'Anúncios',
+  PROMOTED: 'Promovido',
+};
+
+async function resolveVideoMeta(
+  ids: string[]
+): Promise<Map<string, { title: string; thumbnailUrl: string | null }>> {
+  const map = new Map<string, { title: string; thumbnailUrl: string | null }>();
+  if (ids.length === 0) return map;
+  // Título/thumb vêm da YouTube Data API (chave BYOK) — o Analytics só dá o id.
+  const key = await getCredentialPlainText('youtube');
+  if (!key) return map;
+  try {
+    const url = `https://www.googleapis.com/youtube/v3/videos?part=snippet&id=${ids.join(
+      ','
+    )}&key=${encodeURIComponent(key)}`;
+    const res = await fetch(url);
+    if (!res.ok) return map;
+    const json = (await res.json()) as {
+      items?: Array<{
+        id: string;
+        snippet?: { title?: string; thumbnails?: Record<string, { url: string }> };
+      }>;
+    };
+    for (const it of json.items ?? []) {
+      const thumb =
+        it.snippet?.thumbnails?.medium?.url ?? it.snippet?.thumbnails?.default?.url ?? null;
+      map.set(it.id, { title: it.snippet?.title ?? '', thumbnailUrl: thumb });
+    }
+  } catch {
+    /* best-effort — sem chave/erro, fica só o id */
+  }
+  return map;
+}
+
+export async function getTopVideos(
+  startDate: string,
+  endDate: string,
+  max = 10
+): Promise<YoutubeTopVideo[]> {
+  const r = await query({
+    startDate,
+    endDate,
+    dimensions: 'video',
+    metrics:
+      'views,estimatedMinutesWatched,averageViewPercentage,averageViewDuration,subscribersGained',
+    sort: '-views',
+    maxResults: String(max),
+  });
+  const idx = (name: string) => r.headers.indexOf(name);
+  const vi = idx('video');
+  const viewI = idx('views');
+  const wI = idx('estimatedMinutesWatched');
+  const apI = idx('averageViewPercentage');
+  const adI = idx('averageViewDuration');
+  const sgI = idx('subscribersGained');
+
+  const base = r.rows.map((row) => ({
+    videoId: String(row[vi]),
+    views: Number(row[viewI] ?? 0),
+    estimatedMinutesWatched: Number(row[wI] ?? 0),
+    averageViewPercentage: Number(row[apI] ?? 0),
+    averageViewDuration: Number(row[adI] ?? 0),
+    subscribersGained: Number(row[sgI] ?? 0),
+  }));
+
+  const meta = await resolveVideoMeta(base.map((b) => b.videoId));
+  return base.map((b) => ({
+    ...b,
+    title: meta.get(b.videoId)?.title ?? null,
+    thumbnailUrl: meta.get(b.videoId)?.thumbnailUrl ?? null,
+  }));
+}
+
+export async function getTrafficSources(
+  startDate: string,
+  endDate: string
+): Promise<YoutubeTrafficSource[]> {
+  const r = await query({
+    startDate,
+    endDate,
+    dimensions: 'insightTrafficSourceType',
+    metrics: 'views,estimatedMinutesWatched',
+    sort: '-views',
+  });
+  const si = r.headers.indexOf('insightTrafficSourceType');
+  const vi = r.headers.indexOf('views');
+  const wi = r.headers.indexOf('estimatedMinutesWatched');
+  return r.rows.map((row) => {
+    const source = String(row[si]);
+    return {
+      source,
+      label: TRAFFIC_LABELS[source] ?? source,
+      views: Number(row[vi] ?? 0),
+      estimatedMinutesWatched: Number(row[wi] ?? 0),
+    };
+  });
+}
+
+export async function getInsights(startDate: string, endDate: string): Promise<YoutubeInsights> {
+  const [topVideos, trafficSources] = await Promise.all([
+    getTopVideos(startDate, endDate, 10).catch(() => [] as YoutubeTopVideo[]),
+    getTrafficSources(startDate, endDate).catch(() => [] as YoutubeTrafficSource[]),
+  ]);
+  return { topVideos, trafficSources };
 }

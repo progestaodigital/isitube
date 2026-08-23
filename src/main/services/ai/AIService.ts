@@ -52,7 +52,9 @@ export class AIService {
       system:
         'Você é um analista sênior de canais do YouTube. Responda APENAS com JSON válido, sem texto adicional.',
       prompt,
-      maxTokens: 2000,
+      // Teto alto: a auditoria enriquecida (top vídeos + tráfego + veredito +
+      // findings + ganhos rápidos) é longa; com pouco teto o JSON truncava.
+      maxTokens: 4000,
     });
 
     return {

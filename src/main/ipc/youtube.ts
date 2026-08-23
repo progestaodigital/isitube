@@ -5,7 +5,7 @@ import {
   getConnectionStatus,
   setOAuthConfig,
 } from '../services/youtube-connect';
-import { getChannelSummary } from '../services/youtube-connect/analytics';
+import { getChannelSummary, getInsights } from '../services/youtube-connect/analytics';
 import { getAIService } from '../services/ai';
 
 function ymd(d: Date): string {
@@ -26,6 +26,13 @@ export function registerYoutubeHandlers(): void {
     return getChannelSummary(ymd(start), ymd(end));
   });
 
+  ipcMain.handle('youtube:get-insights', async (_e, days: unknown) => {
+    const d = clampDays(days);
+    const end = new Date();
+    const start = new Date(end.getTime() - d * 86_400_000);
+    return getInsights(ymd(start), ymd(end));
+  });
+
   ipcMain.handle('youtube:audit', async (_e, days: unknown) => {
     const d = clampDays(days);
     const end = new Date();
@@ -33,9 +40,10 @@ export function registerYoutubeHandlers(): void {
     const prevEnd = new Date(start.getTime() - 86_400_000);
     const prevStart = new Date(prevEnd.getTime() - d * 86_400_000);
 
-    const [current, previous] = await Promise.all([
+    const [current, previous, insights] = await Promise.all([
       getChannelSummary(ymd(start), ymd(end)),
       getChannelSummary(ymd(prevStart), ymd(prevEnd)),
+      getInsights(ymd(start), ymd(end)),
     ]);
 
     const ai = await getAIService();
@@ -50,7 +58,13 @@ export function registerYoutubeHandlers(): void {
       void timeSeries;
       return rest;
     };
-    return ai.auditChannel({ periodDays: d, current: strip(current), previous: strip(previous) });
+    return ai.auditChannel({
+      periodDays: d,
+      current: strip(current),
+      previous: strip(previous),
+      topVideos: insights.topVideos,
+      trafficSources: insights.trafficSources,
+    });
   });
 
   ipcMain.handle('youtube:set-config', async (_e, clientId: unknown, clientSecret: unknown) => {

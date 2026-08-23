@@ -904,6 +904,29 @@ export type YoutubeChannelSummary = {
   timeSeries: Array<{ date: string; views: number; estimatedMinutesWatched: number }>;
 };
 
+export type YoutubeTopVideo = {
+  videoId: string;
+  title: string | null;
+  thumbnailUrl: string | null;
+  views: number;
+  averageViewPercentage: number;
+  averageViewDuration: number;
+  estimatedMinutesWatched: number;
+  subscribersGained: number;
+};
+
+export type YoutubeTrafficSource = {
+  source: string;
+  label: string;
+  views: number;
+  estimatedMinutesWatched: number;
+};
+
+export type YoutubeInsights = {
+  topVideos: YoutubeTopVideo[];
+  trafficSources: YoutubeTrafficSource[];
+};
+
 export type ChannelAuditFinding = {
   title: string;
   severity: 'alta' | 'media' | 'baixa';
@@ -925,6 +948,8 @@ export type ChannelAuditInput = {
   periodDays: number;
   current: Omit<YoutubeChannelSummary, 'timeSeries'>;
   previous: Omit<YoutubeChannelSummary, 'timeSeries'>;
+  topVideos: YoutubeTopVideo[];
+  trafficSources: YoutubeTrafficSource[];
 };
 
 // =============================================================================
@@ -1063,6 +1088,7 @@ export type IsitubeAPI = {
     connect: () => Promise<YoutubeConnectResult>;
     disconnect: () => Promise<void>;
     getSummary: (days: number) => Promise<YoutubeChannelSummary>;
+    getInsights: (days: number) => Promise<YoutubeInsights>;
     audit: (days: number) => Promise<ChannelAuditResult>;
   };
   license: {

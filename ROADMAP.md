@@ -3,7 +3,7 @@
 > Software desktop de inteligência competitiva e planejamento de conteúdo para criadores no YouTube.
 > Stack: Electron + React + TypeScript + Vite + Prisma + SQLite + Vercel AI SDK + Claude.
 
-**Status atual:** Fase 13 concluída (Canal próprio — OAuth + YouTube Analytics + agente de auditoria com Claude; validado ao vivo) · também: ajuste de thumbnails na Fase 12 · Base v0.7.0 · **Próxima: Aprofundar a auditoria** (top vídeos com retenção por vídeo, mais dimensões do Analytics, diagnóstico vídeo a vídeo)
+**Status atual:** Fase 13 concluída e aprofundada (Canal próprio — OAuth, métricas, top vídeos com retenção por vídeo, fontes de tráfego, agente de auditoria enriquecido) · também: ajuste de thumbnails (Fase 12) · Base v0.7.0 · **Próxima: DataForSEO** (trocar Keywords Everywhere por dado de SEO melhor)
 **Início:** Maio de 2026 · **MVP previsto:** 9-12 semanas
 
 ---
@@ -674,7 +674,9 @@ Estas regras valem em **todas as fases** e não devem ser quebradas sem decisão
 - **CTR/impressões não vêm da API pública** — mostrado honestamente, sem inventar.
 - **Auditoria = texto (Claude); thumbnail/ajuste = imagem (Gemini)** — chaves separadas.
 
-**Fora de escopo (vira a próxima fase "Aprofundar a auditoria"):** top vídeos com retenção por vídeo, mais dimensões do Analytics, diagnóstico vídeo a vídeo; resolver o nome do canal (hoje "Meu canal" genérico — a API de Analytics não retorna o título); OAuth pro Iniciante via broker no isipanel.
+**Aprofundamento da auditoria (mesmo ciclo, feito):** top vídeos com **retenção por vídeo** (título/thumb resolvidos via YouTube Data API), **fontes de tráfego** (busca/sugeridos/inscritos/externo…), e a auditoria passou a receber tudo isso pra recomendações vídeo a vídeo e de distribuição. Novos `getTopVideos`/`getTrafficSources`/`getInsights` em `analytics.ts`, IPC `youtube:get-insights`, UI (Top vídeos + Fontes de tráfego), prompt enriquecido. Fix: teto da auditoria subido pra 4000 tokens (o JSON truncava com o input maior).
+
+**Fora de escopo (fica pra depois):** resolver o nome do canal (hoje "Meu canal" genérico — a API de Analytics não retorna o título); OAuth pro Iniciante via broker no isipanel; exportar a auditoria (PDF/MD).
 
 ---
 

@@ -19,6 +19,9 @@ import type {
   ChannelAuditResult,
   YoutubeChannelSummary,
   YoutubeConnectionStatus,
+  YoutubeInsights,
+  YoutubeTopVideo,
+  YoutubeTrafficSource,
 } from '@shared/types';
 
 export function MeuCanalPage() {
@@ -299,6 +302,7 @@ function ChannelDashboard() {
   const [audit, setAudit] = useState<ChannelAuditResult | null>(null);
   const [auditing, setAuditing] = useState(false);
   const [auditError, setAuditError] = useState<string | null>(null);
+  const [insights, setInsights] = useState<YoutubeInsights | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -315,6 +319,20 @@ function ChannelDashboard() {
       .finally(() => {
         if (!cancelled) setLoading(false);
       });
+    return () => {
+      cancelled = true;
+    };
+  }, [days]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setInsights(null);
+    window.api.youtube
+      .getInsights(days)
+      .then((i) => {
+        if (!cancelled) setInsights(i);
+      })
+      .catch(() => {});
     return () => {
       cancelled = true;
     };
@@ -426,6 +444,11 @@ function ChannelDashboard() {
         </>
       )}
 
+      {insights && insights.topVideos.length > 0 && <TopVideosTable videos={insights.topVideos} />}
+      {insights && insights.trafficSources.length > 0 && (
+        <TrafficBreakdown sources={insights.trafficSources} />
+      )}
+
       {auditError && (
         <div className="mt-4 rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300">
           {auditError}
@@ -523,6 +546,84 @@ function SeverityBadge({ severity }: { severity: 'alta' | 'media' | 'baixa' }) {
     >
       {severity}
     </span>
+  );
+}
+
+function TopVideosTable({ videos }: { videos: YoutubeTopVideo[] }) {
+  return (
+    <div className="mt-5">
+      <p className="mb-2 text-xs font-medium text-zinc-500">
+        Top vídeos (por views) — retenção por vídeo
+      </p>
+      <div className="space-y-1.5">
+        {videos.map((v) => (
+          <div
+            key={v.videoId}
+            className="flex items-center gap-3 rounded-lg border border-zinc-200 p-2 dark:border-zinc-800"
+          >
+            {v.thumbnailUrl ? (
+              <img src={v.thumbnailUrl} alt="" className="h-10 w-16 shrink-0 rounded object-cover" />
+            ) : (
+              <div className="h-10 w-16 shrink-0 rounded bg-zinc-200 dark:bg-zinc-800" />
+            )}
+            <div className="min-w-0 flex-1">
+              <p className="line-clamp-1 text-xs font-medium">{v.title ?? v.videoId}</p>
+              <div className="mt-0.5 flex flex-wrap gap-x-3 text-[10px] text-zinc-500">
+                <span>{fmtInt(v.views)} views</span>
+                <span>AVD {fmtDuration(v.averageViewDuration)}</span>
+                {v.subscribersGained > 0 && <span>+{fmtInt(v.subscribersGained)} inscritos</span>}
+              </div>
+            </div>
+            <RetentionPill pct={v.averageViewPercentage} />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function RetentionPill({ pct }: { pct: number }) {
+  const tone =
+    pct >= 50
+      ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300'
+      : pct >= 35
+        ? 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300'
+        : 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300';
+  return (
+    <div className="shrink-0 text-right">
+      <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${tone}`}>{fmtPct(pct)}</span>
+      <p className="mt-0.5 text-[9px] text-zinc-400">retenção</p>
+    </div>
+  );
+}
+
+function TrafficBreakdown({ sources }: { sources: YoutubeTrafficSource[] }) {
+  const total = sources.reduce((a, s) => a + s.views, 0) || 1;
+  return (
+    <div className="mt-5">
+      <p className="mb-2 text-xs font-medium text-zinc-500">Fontes de tráfego</p>
+      <div className="space-y-1.5">
+        {sources.slice(0, 8).map((s) => {
+          const pct = (s.views / total) * 100;
+          return (
+            <div key={s.source}>
+              <div className="flex items-center justify-between text-[11px]">
+                <span className="text-zinc-700 dark:text-zinc-300">{s.label}</span>
+                <span className="text-zinc-500">
+                  {fmtInt(s.views)} · {fmtPct(pct)}
+                </span>
+              </div>
+              <div className="mt-0.5 h-1.5 w-full overflow-hidden rounded-full bg-zinc-100 dark:bg-zinc-800">
+                <div
+                  className="h-full rounded-full bg-red-500"
+                  style={{ width: `${Math.min(100, pct)}%` }}
+                />
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 
