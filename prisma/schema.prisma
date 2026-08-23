@@ -410,6 +410,32 @@ model KanbanCardReference {
   @@map("kanban_card_references")
 }
 
+// Ideias de vídeo geradas pelo agente de Ideação. Ficam salvas pro criador
+// revisitar, apagar ou promover pra card do Kanban. Campos = VideoIdea + contexto.
+model GeneratedIdea {
+  id               String @id @default(uuid())
+  title            String
+  trafficStrategy  String @map("traffic_strategy")
+  keyword          String
+  competition      String
+  volumeTier       String @map("volume_tier")
+  trendDirection   String @map("trend_direction")
+  contentLengthMin Int    @map("content_length_min")
+  hookAngle        String @map("hook_angle")
+  thumbnailConcept String @map("thumbnail_concept")
+  whyThisIdea      String @map("why_this_idea")
+  urgency          String
+  score            Int
+  niche            String?
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  syncedAt  DateTime? @map("synced_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  @@index([createdAt])
+  @@map("generated_ideas")
+}
+
 // =============================================================================
 // Thumbnail Studio (Module 7) — geração de thumbnails com IA (Gemini).
 //

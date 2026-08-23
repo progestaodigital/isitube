@@ -8,6 +8,7 @@ export type View =
   | 'library'
   | 'kanban'
   | 'thumbnails'
+  | 'criar'
   | 'meu-canal'
   | 'settings'
   | 'help';

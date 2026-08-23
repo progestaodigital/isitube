@@ -14,6 +14,9 @@ import type {
   ExtractedVideosFilters,
   FlaggedVideosFilters,
   FreeKeywordIdeasResult,
+  IdeateInput,
+  IdeasGenerateResult,
+  SavedVideoIdea,
   IsitubeAPI,
   KeywordHistoryItem,
   LibraryActionResult,
@@ -97,6 +100,14 @@ const api: IsitubeAPI = {
   ai: {
     generateKeywordIdeas: (seed: string): Promise<KeywordIdeasResult> =>
       ipcRenderer.invoke('ai:generate-keyword-ideas', seed),
+  },
+  ideas: {
+    generate: (input: IdeateInput): Promise<IdeasGenerateResult> =>
+      ipcRenderer.invoke('ideas:generate', input),
+    list: (): Promise<SavedVideoIdea[]> => ipcRenderer.invoke('ideas:list'),
+    delete: (id: string): Promise<void> => ipcRenderer.invoke('ideas:delete', id),
+    createCard: (id: string): Promise<KanbanCard> =>
+      ipcRenderer.invoke('ideas:create-card', id),
   },
 
   keywords: {

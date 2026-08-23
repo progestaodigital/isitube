@@ -1,6 +1,7 @@
 import { registerSettingsHandlers } from './settings';
 import { registerCredentialsHandlers } from './credentials';
 import { registerAIHandlers } from './ai';
+import { registerIdeasHandlers } from './ideas';
 import { registerKeywordsHandlers } from './keywords';
 import { registerChannelsHandlers } from './channels';
 import { registerScheduleHandlers } from './schedule';
@@ -24,6 +25,7 @@ export function registerIpcHandlers(): void {
   registerSettingsHandlers();
   registerCredentialsHandlers();
   registerAIHandlers();
+  registerIdeasHandlers();
   registerKeywordsHandlers();
   registerChannelsHandlers();
   registerScheduleHandlers();

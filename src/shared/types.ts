@@ -103,6 +103,58 @@ export type RelatedKeywordsResult = {
   items: RelatedKeyword[];
 };
 
+// --- Agentes de IA de criação de conteúdo (ideação, SEO, roteiro, gancho) ---
+
+export type AIRunMeta = {
+  provider: AIProviderName;
+  model: string | null;
+  durationMs: number;
+};
+
+export type VideoIdeaTrafficStrategy = 'busca' | 'navegacao' | 'tendencia';
+export type VideoIdeaLevel = 'baixa' | 'media' | 'alta';
+export type VideoIdeaVolumeTier = 'baixo' | 'medio' | 'alto';
+export type VideoIdeaTrend = 'subindo' | 'estavel' | 'caindo';
+export type VideoIdeaUrgency = 'semana' | 'evergreen' | 'sazonal';
+
+export type VideoIdea = {
+  title: string;
+  trafficStrategy: VideoIdeaTrafficStrategy;
+  keyword: string;
+  competition: VideoIdeaLevel;
+  volumeTier: VideoIdeaVolumeTier;
+  trendDirection: VideoIdeaTrend;
+  contentLengthMin: number;
+  hookAngle: string;
+  thumbnailConcept: string;
+  whyThisIdea: string;
+  urgency: VideoIdeaUrgency;
+  score: number; // 0-40 composto
+};
+
+export type IdeateInput = {
+  niche: string;
+  topVideos?: string[];
+  audiencePainPoints?: string[];
+  avoid?: string;
+};
+
+export type IdeateResult = {
+  ideas: VideoIdea[];
+  meta: AIRunMeta;
+};
+
+export type SavedVideoIdea = VideoIdea & {
+  id: string;
+  niche: string | null;
+  createdAt: string;
+};
+
+export type IdeasGenerateResult = {
+  ideas: SavedVideoIdea[];
+  meta: AIRunMeta;
+};
+
 export type TrendsTimeSeriesPoint = {
   date: string;
   value: number;
@@ -993,6 +1045,12 @@ export type IsitubeAPI = {
   };
   ai: {
     generateKeywordIdeas: (seed: string) => Promise<KeywordIdeasResult>;
+  };
+  ideas: {
+    generate: (input: IdeateInput) => Promise<IdeasGenerateResult>;
+    list: () => Promise<SavedVideoIdea[]>;
+    delete: (id: string) => Promise<void>;
+    createCard: (id: string) => Promise<KanbanCard>;
   };
   keywords: {
     search: (term: string, options?: KeywordSearchOptions) => Promise<KeywordResult>;
