@@ -7,6 +7,7 @@ export type View =
   | 'videos'
   | 'library'
   | 'kanban'
+  | 'thumbnails'
   | 'settings'
   | 'help';
 

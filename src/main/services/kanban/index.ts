@@ -1,3 +1,5 @@
+import { dialog } from 'electron';
+import { writeFile } from 'node:fs/promises';
 import { getPrisma } from '../../db';
 import type {
   KanbanBoard,
@@ -9,6 +11,7 @@ import type {
   KanbanColumn,
   KanbanReferenceType,
   KanbanThumbnailUpload,
+  ThumbnailExportResult,
 } from '@shared/types';
 
 const VALID_REF_TYPES: KanbanReferenceType[] = ['thumb', 'titulo', 'roteiro'];
@@ -369,6 +372,66 @@ export async function setCoverThumbnail(thumbnailId: string): Promise<KanbanCard
     include: cardInclude(),
   });
   return projectCard(card, new Map());
+}
+
+/**
+ * Puxa uma thumbnail gerada no Thumbnail Studio pra dentro do card, copiando o
+ * BLOB da geração pra uma KanbanCardThumbnail (fica independente da geração
+ * original — apagar a geração não afeta o card).
+ */
+export async function addThumbnailFromGeneration(
+  cardId: string,
+  generationId: string
+): Promise<KanbanCard> {
+  const prisma = getPrisma();
+  const gen = await prisma.thumbnailGeneration.findFirst({
+    where: { id: generationId, deletedAt: null },
+  });
+  if (!gen) throw new Error('Thumbnail do estúdio não encontrada.');
+
+  const max = await prisma.kanbanCardThumbnail.aggregate({
+    where: { cardId },
+    _max: { position: true },
+  });
+  const nextPos = (max._max.position ?? -1) + 1;
+  const existingCount = await prisma.kanbanCardThumbnail.count({ where: { cardId } });
+
+  await prisma.kanbanCardThumbnail.create({
+    data: {
+      cardId,
+      position: nextPos,
+      data: Buffer.from(gen.data),
+      mimeType: gen.mimeType,
+      isCover: existingCount === 0,
+    },
+  });
+
+  const card = await prisma.kanbanCard.findUniqueOrThrow({
+    where: { id: cardId },
+    include: cardInclude(),
+  });
+  return projectCard(card, new Map());
+}
+
+/** Baixa (salva em disco) uma thumbnail do card via dialog nativo. */
+export async function exportCardThumbnail(thumbnailId: string): Promise<ThumbnailExportResult> {
+  const thumb = await getPrisma().kanbanCardThumbnail.findUnique({ where: { id: thumbnailId } });
+  if (!thumb) return { success: false, message: 'Thumbnail não encontrada.' };
+
+  const ext = /jpe?g/i.test(thumb.mimeType) ? 'jpg' : 'png';
+  const result = await dialog.showSaveDialog({
+    title: 'Salvar thumbnail',
+    defaultPath: `thumbnail-${thumbnailId.slice(0, 8)}.${ext}`,
+    filters: [
+      { name: 'Imagem', extensions: [ext] },
+      { name: 'Todos os arquivos', extensions: ['*'] },
+    ],
+  });
+  if (result.canceled || !result.filePath) {
+    return { success: false, message: 'Exportação cancelada.' };
+  }
+  await writeFile(result.filePath, Buffer.from(thumb.data));
+  return { success: true, message: 'Salvo com sucesso.', path: result.filePath };
 }
 
 // =============================================================================

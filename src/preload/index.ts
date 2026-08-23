@@ -58,6 +58,18 @@ import type {
   VideoInfo,
   VideoMetadataExtractionResult,
   VideoTranscript,
+  ThumbnailAsset,
+  ThumbnailAssetKind,
+  ThumbnailAssetUpload,
+  ThumbnailGeneration,
+  ThumbnailGenerateInput,
+  ThumbnailGenerateResult,
+  ThumbnailExportResult,
+  ThumbnailStudioStatus,
+  ThumbnailCharacter,
+  ThumbnailScene,
+  ImageUpload,
+  VideoThumbnailHit,
 } from '@shared/types';
 
 const api: IsitubeAPI = {
@@ -255,6 +267,10 @@ const api: IsitubeAPI = {
       ipcRenderer.invoke('kanban:delete-card', cardId),
     addThumbnail: (cardId: string, upload: KanbanThumbnailUpload): Promise<KanbanCard> =>
       ipcRenderer.invoke('kanban:add-thumbnail', cardId, upload),
+    addThumbnailFromGeneration: (cardId: string, generationId: string): Promise<KanbanCard> =>
+      ipcRenderer.invoke('kanban:add-thumbnail-from-generation', cardId, generationId),
+    exportThumbnail: (thumbnailId: string): Promise<ThumbnailExportResult> =>
+      ipcRenderer.invoke('kanban:export-thumbnail', thumbnailId),
     deleteThumbnail: (thumbnailId: string): Promise<KanbanCard> =>
       ipcRenderer.invoke('kanban:delete-thumbnail', thumbnailId),
     setCoverThumbnail: (thumbnailId: string): Promise<KanbanCard> =>
@@ -276,6 +292,66 @@ const api: IsitubeAPI = {
       ipcRenderer.invoke('transcripts:extract', videoId),
     export: (videoId: string, format: TranscriptExportFormat): Promise<TranscriptExportResult> =>
       ipcRenderer.invoke('transcripts:export', videoId, format),
+  },
+
+  thumbnails: {
+    listAssets: (kind?: ThumbnailAssetKind): Promise<ThumbnailAsset[]> =>
+      ipcRenderer.invoke('thumbnails:list-assets', kind),
+    addAssetFromUpload: (upload: ThumbnailAssetUpload): Promise<ThumbnailAsset> =>
+      ipcRenderer.invoke('thumbnails:add-upload', upload),
+    addAssetFromVideo: (
+      videoId: string,
+      kind?: ThumbnailAssetKind,
+      label?: string
+    ): Promise<ThumbnailAsset> =>
+      ipcRenderer.invoke('thumbnails:add-from-video', videoId, kind, label),
+    pickAutoStyleRef: (): Promise<ThumbnailAsset | null> =>
+      ipcRenderer.invoke('thumbnails:pick-auto-ref'),
+    deleteAsset: (id: string): Promise<void> =>
+      ipcRenderer.invoke('thumbnails:delete-asset', id),
+    searchVideos: (query: string): Promise<VideoThumbnailHit[]> =>
+      ipcRenderer.invoke('thumbnails:search-videos', query),
+    listCharacters: (): Promise<ThumbnailCharacter[]> =>
+      ipcRenderer.invoke('thumbnails:list-characters'),
+    createCharacter: (name: string, notes?: string | null): Promise<ThumbnailCharacter> =>
+      ipcRenderer.invoke('thumbnails:create-character', name, notes ?? null),
+    addCharacterPhotos: (characterId: string, photos: ImageUpload[]): Promise<ThumbnailCharacter> =>
+      ipcRenderer.invoke('thumbnails:add-character-photos', characterId, photos),
+    removeCharacterPhoto: (photoId: string): Promise<void> =>
+      ipcRenderer.invoke('thumbnails:remove-character-photo', photoId),
+    renameCharacter: (
+      id: string,
+      name: string,
+      notes?: string | null
+    ): Promise<ThumbnailCharacter> =>
+      ipcRenderer.invoke('thumbnails:rename-character', id, name, notes ?? null),
+    deleteCharacter: (id: string): Promise<void> =>
+      ipcRenderer.invoke('thumbnails:delete-character', id),
+    listScenes: (): Promise<ThumbnailScene[]> => ipcRenderer.invoke('thumbnails:list-scenes'),
+    createScene: (name: string, photo: ImageUpload): Promise<ThumbnailScene> =>
+      ipcRenderer.invoke('thumbnails:create-scene', name, photo),
+    renameScene: (id: string, name: string): Promise<ThumbnailScene> =>
+      ipcRenderer.invoke('thumbnails:rename-scene', id, name),
+    deleteScene: (id: string): Promise<void> =>
+      ipcRenderer.invoke('thumbnails:delete-scene', id),
+    buildPrompt: (
+      styleAssetId: string,
+      instructions: string,
+      hasScene: boolean
+    ): Promise<string> =>
+      ipcRenderer.invoke('thumbnails:build-prompt', styleAssetId, instructions, hasScene),
+    generate: (input: ThumbnailGenerateInput): Promise<ThumbnailGenerateResult> =>
+      ipcRenderer.invoke('thumbnails:generate', input),
+    listGenerations: (): Promise<ThumbnailGeneration[]> =>
+      ipcRenderer.invoke('thumbnails:list-generations'),
+    searchGenerations: (query: string): Promise<ThumbnailGeneration[]> =>
+      ipcRenderer.invoke('thumbnails:search-generations', query),
+    deleteGeneration: (id: string): Promise<void> =>
+      ipcRenderer.invoke('thumbnails:delete-generation', id),
+    export: (id: string): Promise<ThumbnailExportResult> =>
+      ipcRenderer.invoke('thumbnails:export', id),
+    status: (): Promise<ThumbnailStudioStatus> => ipcRenderer.invoke('thumbnails:status'),
+    usdBrlRate: (): Promise<number> => ipcRenderer.invoke('thumbnails:usd-brl-rate'),
   },
 
   license: {

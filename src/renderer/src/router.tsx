@@ -5,6 +5,7 @@ import { KeywordsPage } from './pages/KeywordsPage';
 import { VideosPage } from './pages/VideosPage';
 import { LibraryPage } from './pages/LibraryPage';
 import { KanbanPage } from './pages/KanbanPage';
+import { ThumbnailsPage } from './pages/ThumbnailsPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { HelpPage } from './pages/HelpPage';
 
@@ -24,6 +25,8 @@ export function Router() {
       return <LibraryPage />;
     case 'kanban':
       return <KanbanPage />;
+    case 'thumbnails':
+      return <ThumbnailsPage />;
     case 'settings':
       return <SettingsPage />;
     case 'help':

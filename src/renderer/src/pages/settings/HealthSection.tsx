@@ -24,6 +24,7 @@ const DISPLAY_ORDER: ProviderKey[] = [
   'keywords-everywhere',
   'isipanel-validate',
   'github',
+  'gemini-image',
 ];
 
 const LABELS: Record<ProviderKey, { name: string; description: string }> = {
@@ -62,6 +63,10 @@ const LABELS: Record<ProviderKey, { name: string; description: string }> = {
   github: {
     name: 'GitHub',
     description: 'Backup e atualizações do app',
+  },
+  'gemini-image': {
+    name: 'Gemini (geração de imagem)',
+    description: 'Geração de thumbnails com IA (Pro BYOK)',
   },
 };
 

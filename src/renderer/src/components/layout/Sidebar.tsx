@@ -6,6 +6,7 @@ import {
   FileText,
   BookMarked,
   KanbanSquare,
+  ImagePlus,
   Settings,
   HelpCircle,
   type LucideIcon,
@@ -26,6 +27,7 @@ const navItems: NavItem[] = [
   { icon: FileText, label: 'Vídeos', view: 'videos' },
   { icon: BookMarked, label: 'Biblioteca', view: 'library' },
   { icon: KanbanSquare, label: 'Kanban', view: 'kanban' },
+  { icon: ImagePlus, label: 'Thumbnails', view: 'thumbnails' },
   { icon: Settings, label: 'Configurações', view: 'settings' },
   { icon: HelpCircle, label: 'Ajuda', view: 'help' },
 ];

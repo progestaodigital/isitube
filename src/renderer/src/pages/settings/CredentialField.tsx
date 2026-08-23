@@ -64,6 +64,11 @@ export function CredentialField({
       const testRes = await window.api.credentials.test(provider);
       setFeedback({ kind: testRes.success ? 'ok' : 'err', text: testRes.message });
       await refresh();
+    } catch (err) {
+      setFeedback({
+        kind: 'err',
+        text: err instanceof Error ? err.message : 'Falha ao salvar a chave.',
+      });
     } finally {
       setBusy(false);
     }

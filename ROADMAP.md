@@ -3,7 +3,7 @@
 > Software desktop de inteligência competitiva e planejamento de conteúdo para criadores no YouTube.
 > Stack: Electron + React + TypeScript + Vite + Prisma + SQLite + Vercel AI SDK + Claude.
 
-**Status atual:** Fase 11 concluída (entitlement assinado Ed25519 na validação de licença — verificação criptográfica com fallback legado + suíte vitest) · Base v0.6.2 · Próxima: a definir
+**Status atual:** Fase 12 concluída (Thumbnail Studio — personagens, cenários, referência→prompt detalhado via visão, custo em R$, integração com o Kanban; validado ao vivo) · Base v0.7.0 · **Próxima: Canal próprio (OAuth) + auditoria/analyze reais** (pré-requisito do app Google/OAuth já provisionado — ver memória `youtube-oauth-own-channel-setup`)
 **Início:** Maio de 2026 · **MVP previsto:** 9-12 semanas
 
 ---
@@ -39,6 +39,7 @@ Estas regras valem em **todas as fases** e não devem ser quebradas sem decisão
 | 9 | Licenciamento real + proxy isipanel + two-slug | ✅ feito | IsiPanel validate + proxy server-side Anthropic/YouTube + plano Iniciante/Pro (v0.3.0) |
 | 10 | Polish dos providers reais + autocomplete + tela de Status | ✅ feito | Autocomplete real do YouTube + Trends rate-limit cooldown + telemetria por provider + tela "Status das integrações" (v0.4.0) |
 | 11 | Entitlement assinado (Ed25519) na validação de licença | ✅ feito | Verificação criptográfica do token do isipanel — gating confia só no JWT assinado quando presente; aditivo e com fallback pro JSON legado |
+| 12 | Thumbnail Studio (geração com IA) | ✅ feito | Personagens (fotos) + cenários + referência→prompt detalhado (visão) + Gemini Flash Image + custo em R$ + integração Kanban (Pro-BYOK) |
 
 > Nota: as versões entre v0.4.0 e v0.6.2 (lixeira/retention, busca global, auto-update) não foram documentadas como fases neste arquivo. A Fase 11 retoma o registro a partir do trabalho de hardening de licença.
 
@@ -553,6 +554,98 @@ Estas regras valem em **todas as fases** e não devem ser quebradas sem decisão
 1. `npm test` → 21 testes passam.
 2. `npm run dev` com servidor que **não** manda `entitlement` → app funciona igual a hoje (fallback legado).
 3. Servidor mandando token válido → gating pela edition assinada; token adulterado/MITM → app bloqueia com "Não foi possível verificar a assinatura da licença".
+
+---
+
+## Fase 12 — Thumbnail Studio (geração de thumbnails com IA) ✅
+
+**Objetivo:** Gerar thumbnails de vídeo dentro do isiTube a partir de (1) fotos do criador (rosto/corpo, pra IA manter a fisionomia), (2) uma imagem de fundo/cenário e (3) um prompt detalhado. As referências podem vir de **upload**, da **biblioteca** (thumbnails de vídeos que performaram acima da média) ou de **escolha automática** pelo sistema.
+
+**⚠️ Nota de execução (2026-08-23): a implementação divergiu bastante do plano previsto abaixo — que fica como registro histórico. O que de fato entrou:**
+
+- **Personagens** (`ThumbnailCharacter` + N fotos) no lugar do "asset de rosto solto": o criador agrupa 5-10 fotos como identidade; até 8 vão pro gerador.
+- **Cenários** (`ThumbnailScene`): fundos nomeados, selecionáveis e opcionais na geração.
+- **Referência de estilo vira TEXTO, não imagem** (o pulo do gato): mandar a thumb do concorrente pro gerador fazia a pessoa dele vazar pra imagem. Agora o **Gemini visão lê a referência e escreve um prompt detalhado** (botão "Gerar prompt da referência"), o usuário revisa e gera. `hasScene` faz o prompt deixar o fundo pro cenário selecionado em vez de descrever o da referência.
+- **Referências vêm de busca de vídeo por título** (`searchVideoThumbnails`), auto-pick do maior outlier, ou upload — selecionadas por padrão.
+- **Custo em R$**: `services/fx` (cotação USD→BRL via AwesomeAPI, cache 6h + fallback offline).
+- **Integração com o Kanban**: cada geração tem um **código** (8 chars do id); no card dá pra **puxar do estúdio** (busca por código/termo do prompt → copia o BLOB), **baixar** a thumb (dialog nativo) e o **upload** manual continua.
+- **Modelos**: imagem `gemini-2.5-flash-image`; visão `gemini-3.6-flash` (o `2.5-flash` saiu de linha para contas novas durante a execução).
+- **Plano/dev**: Pro-BYOK (credencial `google_ai`); em dev sem chave, `MockImageProvider` (gradiente) demonstra o fluxo. Iniciante bloqueado (upsell).
+- **Migrations**: `add_thumbnails`, `add_characters_scenes`, `add_style_description`. Imagens como **BLOB** (padrão Kanban → entram no backup do `.db`).
+- **Bug corrigido**: `ipc/credentials.ts` tinha whitelist própria de providers sem `google_ai` (a chave não salvava, com falha muda) → adicionado + `catch` no `CredentialField`.
+- **Arquivos reais**: `services/thumbnails/{providers/{types,gemini,mock}.ts,index.ts}`, `services/fx/index.ts`, `services/kanban/index.ts` (+`addThumbnailFromGeneration`/`exportCardThumbnail`), `ipc/{thumbnails,kanban}.ts`, `credentials.ts`; `shared/types.ts` + `preload/index.ts`; `pages/ThumbnailsPage.tsx`, `pages/settings/ThumbnailsSection.tsx`, `pages/HelpPage.tsx` (+`api-gemini`), `pages/kanban/CardEditorModal.tsx`, Sidebar + rota, `MissingKeyCTA`/`HealthSection`.
+- **Validado ao vivo** com o usuário (Pro + chave real): referência→prompt→geração com personagem + cenário, sem vazamento de pessoa, custo em R$, e puxar/baixar no Kanban.
+
+**Decisões de produto (definidas em planejamento, 2026-08-22):**
+- **Motor:** Gemini 2.5 Flash Image ("Nano Banana") — multi-referência, mantém rosto/sujeito, ~US$0,04/img, rápido. Abstraído atrás de `ImageProvider` pra ser trocável sem mexer na UI.
+- **Plano:** **Pro-BYOK primeiro** (usuário cola a própria chave Gemini). Iniciante vê upsell; proxy no isipanel fica pra fase futura. Espelha o tratamento do Keywords Everywhere (Pro-only).
+- **API HTTP direto no main**, não MCP — o NanoBanana MCP é ferramenta do Claude Code, não shipável no Electron; chamamos a API REST direto, como os outros providers reais.
+
+**Constraints herdados aplicáveis:** #1 chave nunca no renderer (imagem gerada no main; renderer recebe path/preview); #3 código EN / UI pt-BR; #6 schema sync-ready; #7 degradação graciosa (sem chave → CTA "configurar"); #8 privacidade (fotos do rosto ficam locais, só sobem pro provedor no ato da geração, com aviso explícito).
+
+**Três insumos, dois papéis de referência (não misturar):**
+- **Identidade** — fotos de rosto/corpo do criador.
+- **Estilo/layout** — uma thumbnail vencedora (composição, cor, posição de texto).
+- **Fundo/cenário** — a foto do set real onde grava.
+
+**Entregáveis previstos:**
+
+*Schema (nova migration `add_thumbnails`):*
+- `ThumbnailAsset` — `id`, `kind` (`face` | `scene` | `style`), `label`, `data` (Bytes/BLOB), `mimeType`, `sourceType` (`upload` | `library`), `sourceVideoId?` (quando veio de um vídeo monitorado), `width`, `height` + campos sync-ready (`id` UUID, `createdAt`, `updatedAt`, `syncedAt?`, `deletedAt?`).
+- `ThumbnailGeneration` — `id`, `prompt`, `refAssetIds` (JSON array), `provider` (`gemini`|`mock`), `model`, `aspectRatio` (default `16:9`), `data` (Bytes/BLOB), `mimeType`, `costEstimateUsd?` + sync-ready.
+- Imagens como **BLOB no SQLite** (`Bytes`), mesmo padrão do `KanbanCardThumbnail` — entram no backup do `.db` e reusam o fluxo base64→BLOB→data URL. (Decisão revista na execução: guardar como arquivo deixaria as imagens fora do backup do GitHub, que só sobe o `.db`.)
+
+*Provider (main-only):*
+- Interface `ImageProvider` em `services/thumbnails/providers/types.ts`: `generateThumbnails(args) → { images: {path}[], usage }`, com `args = { prompt, references: {kind, filePath}[], aspectRatio, count }`.
+- `GeminiImageProvider` (`providers/gemini.ts`) — chama a Gemini API REST (`gemini-2.5-flash-image`), manda refs como inline parts base64 + texto, devolve os bytes gerados (o service persiste como BLOB). Telemetria via `recordSuccess/recordFailure` (novo `ProviderKey` `gemini-image`).
+- Novo `CredentialProvider` `google_ai` em `credentials.ts` (+`ALL_PROVIDERS` +`testGoogleAI()` com chamada mínima pra validar a chave).
+
+*Selector plan-aware (`services/thumbnails/index.ts`, espelhando `ai/index.ts`):*
+- Pro/BYOK → `GeminiImageProvider` com a credencial `google_ai`.
+- Iniciante → `null` (feature bloqueada; UI mostra upsell). Sem proxy nesta fase.
+
+*Serviços de domínio (`services/thumbnails/index.ts`):*
+- `listAssets(kind?)`, `addAssetFromUpload(files)`, `addAssetFromVideo(videoId)` (baixa o `thumbnailHdUrl` já persistido e materializa como asset de estilo), `pickAutoStyleRef()` (maior `outlierPercent` dos vídeos monitorados — reusa outliers já calculados), `deleteAsset(id)`.
+- `generate({ prompt, refAssetIds, aspectRatio, count })`, `listGenerations()`, `exportGeneration(id)` (save dialog nativo + `fs.writeFile`, igual às transcrições).
+
+*IPC (`ipc/thumbnails.ts` + preload):* `thumbnails:list-assets`, `:add-upload`, `:add-from-video`, `:pick-auto-ref`, `:delete-asset`, `:generate`, `:list-generations`, `:export`.
+
+*UI (nova página **Thumbnails** na Sidebar):*
+- Painel de composição: textarea de prompt (+ helper opcional com estrutura de CTR), seletor de referências em 3 abas (Upload / Biblioteca / Automático), preview das refs escolhidas, botão "Gerar" com nº de variantes.
+- Galeria/histórico de gerações: download, "usar como referência de estilo", associar a um vídeo.
+- Biblioteca de assets reusáveis (sobe rosto/cenário uma vez, reusa sempre).
+- Aviso de privacidade explícito (imagens sobem pro Google só no ato da geração).
+- `MissingKeyCTA` / upsell quando sem chave (Pro) ou plano Iniciante.
+
+*Prompt:* `prompts/thumbnail.md` (template com heurísticas de CTR), shipado via `extraResources` como os demais.
+
+*Custos + tutorial:* estende quota/telemetria com estimativa em US$ por geração; novo tópico de Ajuda "Gerar sua chave Gemini (Google AI Studio)" + seção Gemini em "Custos das APIs".
+
+**Arquivos-chave previstos:**
+- Backend: `prisma/schema.prisma` (+`ThumbnailAsset`, +`ThumbnailGeneration`) + migration; `src/main/services/thumbnails/` (`providers/types.ts`, `providers/gemini.ts`, `index.ts`); `src/main/ipc/thumbnails.ts`; `src/main/services/credentials.ts` (+`google_ai`).
+- Prompt: `prompts/thumbnail.md`.
+- Shared/preload: `src/shared/types.ts` (+tipos `Thumbnail*`, +`CredentialProvider` `google_ai`, +`ProviderKey` `gemini-image`, +`IsitubeAPI.thumbnails`), `src/preload/index.ts`.
+- Renderer: `src/renderer/src/pages/ThumbnailsPage.tsx` + `pages/thumbnails/*`; item na Sidebar; campo de credencial Gemini em `pages/settings/`; tópicos da Ajuda.
+
+**Como testar (previsto):**
+1. Settings → cadastra a chave Gemini → "Testar conexão" fica verde.
+2. Thumbnails → Biblioteca → "Adicionar do vídeo" pega a thumb de um outlier; sobe 1-2 fotos suas (`face`) + 1 foto do cenário (`scene`).
+3. Escreve prompt, escolhe refs (identidade + cenário + estilo), "Gerar" → em alguns segundos aparecem 1 principal + N variantes.
+4. Modo Automático: sistema escolhe a thumb de maior outlier como referência de estilo.
+5. Baixa/exporta uma geração (dialog nativo). Histórico persiste após restart.
+6. Sem chave (Pro) → CTA "configure sua chave Gemini". Iniciante → upsell.
+7. Privacidade: banner deixa claro que as imagens sobem pro Google só na geração.
+
+**Fora de escopo desta fase (registrado):**
+- Proxy Gemini no isipanel pro Iniciante (fase futura).
+- Overlay de texto via canvas / edição por região específica (v2 — por ora o texto vem do próprio modelo).
+- Geração de vídeo/animação de thumbnail.
+
+**Decisões de design (a confirmar na execução):**
+- Dois papéis de referência (identidade vs estilo) modelados como `kind` no `ThumbnailAsset`.
+- Imagens como BLOB no banco (padrão Kanban) — entram no backup do `.db`.
+- `ImageProvider` abstrato pra trocar o motor sem tocar a UI.
+- Reuso dos outliers já calculados pra "thumbs acima da média" e auto-pick — zero schema novo além do link `sourceVideoId`.
 
 ---
 

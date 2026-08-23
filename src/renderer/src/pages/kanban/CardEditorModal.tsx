@@ -11,6 +11,8 @@ import {
   ExternalLink,
   FileText,
   Type,
+  Download,
+  Search,
 } from 'lucide-react';
 import { Modal } from '../../components/ui/Modal';
 import { Button } from '../../components/ui/Button';
@@ -19,7 +21,7 @@ import { useRouterStore } from '../../stores/router';
 import { useVideoDetailStore } from '../../stores/videoDetail';
 import { cn } from '../../lib/cn';
 import { ReferencePickerModal } from './ReferencePickerModal';
-import type { KanbanCard, KanbanReferenceType } from '@shared/types';
+import type { KanbanCard, KanbanReferenceType, ThumbnailGeneration } from '@shared/types';
 
 interface CardEditorModalProps {
   card: KanbanCard | null;
@@ -39,6 +41,7 @@ export function CardEditorModal({ card, onClose, onChanged }: CardEditorModalPro
   const [secondaryKeywords, setSecondaryKeywords] = useState<string[]>([]);
   const [script, setScript] = useState('');
   const [refPickerOpen, setRefPickerOpen] = useState(false);
+  const [studioOpen, setStudioOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Hidrata quando o card muda (abertura ou refetch após salvar).
@@ -150,6 +153,29 @@ export function CardEditorModal({ card, onClose, onChanged }: CardEditorModalPro
       showToast({
         kind: 'error',
         title: 'Falha',
+        description: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
+  async function handleExportThumbnail(thumbId: string) {
+    const res = await window.api.kanban.exportThumbnail(thumbId);
+    if (res.success) showToast({ kind: 'success', title: 'Salvo', description: res.path });
+    else if (res.message !== 'Exportação cancelada.')
+      showToast({ kind: 'error', title: 'Falha ao salvar', description: res.message });
+  }
+
+  async function handleAddFromGeneration(generationId: string) {
+    if (!card) return;
+    try {
+      await window.api.kanban.addThumbnailFromGeneration(card.id, generationId);
+      await onChanged();
+      setStudioOpen(false);
+      showToast({ kind: 'success', title: 'Thumbnail do estúdio adicionada ao card' });
+    } catch (err) {
+      showToast({
+        kind: 'error',
+        title: 'Falha ao puxar do estúdio',
         description: err instanceof Error ? err.message : String(err),
       });
     }
@@ -335,6 +361,13 @@ export function CardEditorModal({ card, onClose, onChanged }: CardEditorModalPro
                           </button>
                         )}
                         <button
+                          onClick={() => handleExportThumbnail(t.id)}
+                          title="Baixar"
+                          className="rounded-md bg-white/90 p-1 text-zinc-700 hover:bg-white"
+                        >
+                          <Download className="h-3.5 w-3.5" />
+                        </button>
+                        <button
                           onClick={() => handleDeleteThumbnail(t.id)}
                           title="Apagar thumbnail"
                           className="rounded-md bg-white/90 p-1 text-red-600 hover:bg-white"
@@ -357,14 +390,21 @@ export function CardEditorModal({ card, onClose, onChanged }: CardEditorModalPro
                   e.target.value = '';
                 }}
               />
-              <Button
-                onClick={() => fileInputRef.current?.click()}
-                variant="secondary"
-                size="sm"
-              >
-                <Plus className="h-3.5 w-3.5" />
-                Subir thumbnail{card.thumbnails.length === 0 ? '' : ' (mais uma)'}
-              </Button>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  onClick={() => fileInputRef.current?.click()}
+                  variant="secondary"
+                  size="sm"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  Subir thumbnail{card.thumbnails.length === 0 ? '' : ' (mais uma)'}
+                </Button>
+                <Button onClick={() => setStudioOpen((v) => !v)} variant="secondary" size="sm">
+                  <Sparkles className="h-3.5 w-3.5" />
+                  Puxar do estúdio
+                </Button>
+              </div>
+              {studioOpen && <StudioPicker onPick={handleAddFromGeneration} />}
               {card.thumbnails.length > 1 && (
                 <p className="text-[11px] text-zinc-500">
                   A capa do card é a thumb marcada com <Star className="inline h-3 w-3" />.
@@ -556,5 +596,70 @@ function ReferenceTypeBadge({ type }: { type: KanbanReferenceType }) {
       <Icon className="h-2.5 w-2.5" />
       {label}
     </span>
+  );
+}
+
+function StudioPicker({ onPick }: { onPick: (generationId: string) => void }) {
+  const [query, setQuery] = useState('');
+  const [results, setResults] = useState<ThumbnailGeneration[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    const t = setTimeout(async () => {
+      try {
+        const r = await window.api.thumbnails.searchGenerations(query);
+        if (!cancelled) setResults(r);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }, 250);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
+  }, [query]);
+
+  return (
+    <div className="rounded-md border border-zinc-200 p-2 dark:border-zinc-800">
+      <div className="relative">
+        <Search className="absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-zinc-400" />
+        <input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Buscar por código (ID) ou termo do prompt…"
+          className="h-8 w-full rounded-md border border-zinc-300 bg-white pl-7 pr-2 text-xs dark:border-zinc-700 dark:bg-zinc-900"
+        />
+      </div>
+      {loading && <p className="mt-2 text-[11px] text-zinc-500">Buscando…</p>}
+      {!loading && results.length === 0 && (
+        <p className="mt-2 text-[11px] text-zinc-500">
+          Nenhuma thumbnail no estúdio. Gere em <b>Thumbnails</b> primeiro.
+        </p>
+      )}
+      {results.length > 0 && (
+        <div className="mt-2 grid grid-cols-3 gap-2 sm:grid-cols-4">
+          {results.map((g) => (
+            <button
+              key={g.id}
+              onClick={() => onPick(g.id)}
+              title={g.prompt}
+              className="group overflow-hidden rounded-md border border-zinc-200 text-left transition-colors hover:border-red-300 dark:border-zinc-800 dark:hover:border-red-800"
+            >
+              <div className="relative">
+                <img src={g.dataUrl} alt="" className="aspect-video w-full object-cover" />
+                <span className="absolute inset-0 flex items-center justify-center bg-black/0 opacity-0 transition-opacity group-hover:bg-black/40 group-hover:opacity-100">
+                  <Plus className="h-5 w-5 text-white" />
+                </span>
+              </div>
+              <p className="px-1 py-0.5 font-mono text-[9px] text-zinc-500">
+                #{g.id.slice(0, 8).toUpperCase()}
+              </p>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }

@@ -12,6 +12,7 @@ export type HelpTopic =
   | 'api-anthropic'
   | 'api-youtube'
   | 'api-ke'
+  | 'api-gemini'
   | 'api-github-pat'
   // Custos e cotas
   | 'youtube-quota'

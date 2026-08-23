@@ -122,6 +122,7 @@ function useTopicGroups(): TopicGroup[] {
         { id: 'api-anthropic', title: 'Anthropic Claude', icon: Wand2, body: ApiAnthropic },
         { id: 'api-youtube', title: 'YouTube Data API', icon: Youtube, body: ApiYoutube },
         { id: 'api-ke', title: 'Keywords Everywhere', icon: Tag, body: ApiKeywordsEverywhere },
+        { id: 'api-gemini', title: 'Google AI (Gemini)', icon: Sparkles, body: ApiGemini },
         { id: 'api-github-pat', title: 'GitHub (Backup)', icon: Github, body: ApiGithub },
       ],
     },
@@ -394,6 +395,45 @@ function ApiKeywordsEverywhere(navigate: Nav) {
         <b>Não obrigatório:</b> KE é opcional mesmo no Pro. Se você não quiser pagar US$10, o
         isiTube continua funcionando com Trends + scraping — só perde o componente "volume
         absoluto" do score, e ele se renormaliza automaticamente.
+      </Callout>
+    </Body>
+  );
+}
+
+function ApiGemini(navigate: Nav) {
+  return (
+    <Body>
+      <Pill color="emerald">Necessário só pro plano Pro</Pill>
+      <P>
+        A geração de thumbnails usa o <b>Gemini</b> (Google AI). A chave é <b>separada</b> da chave
+        do YouTube Data API, mas pode viver no <b>mesmo projeto</b> do Google Cloud.
+      </P>
+      <Steps>
+        <Step>
+          <b>Abra o Google AI Studio.</b> Acesse{' '}
+          <ExtLink href="https://aistudio.google.com/apikey">aistudio.google.com/apikey</ExtLink> e
+          faça login com sua conta Google.
+        </Step>
+        <Step>
+          <b>Crie a chave.</b> Clique em <b>"Criar chave de API"</b> (Create API key). Pode criar
+          dentro de um projeto existente — dá pra reusar o mesmo projeto <Code>isiTube</Code> que
+          você já usa pro YouTube. O AI Studio habilita a <i>Generative Language API</i>{' '}
+          automaticamente.
+        </Step>
+        <Step>
+          <b>Copie a chave</b> (formato <Code>AIza...</Code>).
+        </Step>
+        <Step>
+          <b>Cole no isiTube.</b> Vai em{' '}
+          <Link onClick={() => navigate('settings')}>
+            Configurações → Geração de thumbnails (Gemini)
+          </Link>{' '}
+          → cola → <b>Salvar</b> → <b>Testar conexão</b>.
+        </Step>
+      </Steps>
+      <Callout kind="tip">
+        <b>Custo:</b> pay-as-you-go direto na sua conta Google. O Gemini 2.5 Flash Image custa cerca
+        de <b>US$0,04 por imagem</b> gerada. Há um nível gratuito limitado pra testes.
       </Callout>
     </Body>
   );

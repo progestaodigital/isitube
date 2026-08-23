@@ -8,7 +8,8 @@
 export type CredentialProvider =
   | 'anthropic'
   | 'youtube'
-  | 'keywords_everywhere';
+  | 'keywords_everywhere'
+  | 'google_ai';
 
 export type CredentialStatus = {
   provider: CredentialProvider;
@@ -544,7 +545,8 @@ export type ProviderKey =
   | 'trends'
   | 'keywords-everywhere'
   | 'isipanel-validate'
-  | 'github';
+  | 'github'
+  | 'gemini-image';
 
 export type ProviderSnapshot = {
   key: ProviderKey;
@@ -728,6 +730,136 @@ export type GithubRepoListResult = {
 };
 
 // =============================================================================
+// Thumbnail Studio (Module 7)
+// =============================================================================
+
+export type ThumbnailAssetKind = 'face' | 'scene' | 'style';
+
+export type ThumbnailAsset = {
+  id: string;
+  kind: ThumbnailAssetKind;
+  label: string;
+  /** Data URL (`data:image/...;base64,...`) montada pelo main process. */
+  dataUrl: string;
+  mimeType: string;
+  width: number | null;
+  height: number | null;
+  sourceType: 'upload' | 'library';
+  sourceVideoId: string | null;
+  createdAt: string;
+};
+
+export type ThumbnailAssetUpload = {
+  /** Base64 sem o prefixo `data:`. Main decodifica, faz downscale e persiste como BLOB. */
+  base64: string;
+  mimeType: string;
+  kind: ThumbnailAssetKind;
+  label: string;
+};
+
+/** Upload de imagem cru (base64 sem o prefixo `data:`). */
+export type ImageUpload = {
+  base64: string;
+  mimeType: string;
+};
+
+export type ThumbnailCharacterPhoto = {
+  id: string;
+  dataUrl: string;
+  mimeType: string;
+  width: number | null;
+  height: number | null;
+};
+
+/**
+ * Personagem: identidade reusável do criador. Agrupa N fotos (recomendado 5-10)
+ * pra a IA manter a fisionomia. Na geração o usuário seleciona um personagem.
+ */
+export type ThumbnailCharacter = {
+  id: string;
+  name: string;
+  notes: string | null;
+  photos: ThumbnailCharacterPhoto[];
+  createdAt: string;
+};
+
+/** Cenário reusável (fundo/set). Uma imagem + nome. Opcional na geração. */
+export type ThumbnailScene = {
+  id: string;
+  name: string;
+  dataUrl: string;
+  mimeType: string;
+  width: number | null;
+  height: number | null;
+  createdAt: string;
+};
+
+/** Resultado da busca de vídeos por título (escolher thumb de referência de estilo). */
+export type VideoThumbnailHit = {
+  id: string;
+  youtubeId: string;
+  title: string;
+  thumbnailUrl: string | null;
+  channelTitle: string | null;
+  viewCount: number;
+  outlierPercent: number | null;
+  flaggedAsOutlier: boolean;
+};
+
+export type ThumbnailGeneration = {
+  id: string;
+  prompt: string;
+  provider: string;
+  model: string;
+  aspectRatio: string;
+  /** Ids das referências de estilo (ThumbnailAsset) usadas. */
+  refAssetIds: string[];
+  characterId: string | null;
+  sceneId: string | null;
+  /** Data URL da imagem gerada. */
+  dataUrl: string;
+  mimeType: string;
+  costEstimateUsd: number | null;
+  createdAt: string;
+};
+
+export type ThumbnailGenerateInput = {
+  prompt: string;
+  /** Personagem selecionado (identidade) — usa as fotos dele como referência. */
+  characterId?: string | null;
+  /** Cenário selecionado (fundo) — opcional. */
+  sceneId?: string | null;
+  /** Ids de ThumbnailAsset usados como referência de estilo (thumbs vencedoras). */
+  styleAssetIds?: string[];
+  aspectRatio?: string;
+  /** Quantas variações gerar (1 principal + extras). Default 1, máx 4. */
+  count?: number;
+};
+
+export type ThumbnailGenerateResult = {
+  success: boolean;
+  message: string;
+  generations?: ThumbnailGeneration[];
+};
+
+export type ThumbnailExportResult = {
+  success: boolean;
+  message: string;
+  path?: string;
+};
+
+/**
+ * Estado do estúdio pra a UI decidir entre habilitar geração, mostrar CTA de
+ * chave ou upsell de plano. `provider` é qual motor seria usado se gerasse agora.
+ */
+export type ThumbnailStudioStatus = {
+  canGenerate: boolean;
+  provider: 'gemini' | 'mock' | null;
+  /** Motivo quando canGenerate=false. */
+  blockedReason: 'iniciante' | 'no-key' | 'no-license' | null;
+};
+
+// =============================================================================
 // IPC bridge contract
 // =============================================================================
 
@@ -795,6 +927,8 @@ export type IsitubeAPI = {
     moveCard: (cardId: string, toColumnId: string, toPosition: number) => Promise<void>;
     deleteCard: (cardId: string) => Promise<void>;
     addThumbnail: (cardId: string, upload: KanbanThumbnailUpload) => Promise<KanbanCard>;
+    addThumbnailFromGeneration: (cardId: string, generationId: string) => Promise<KanbanCard>;
+    exportThumbnail: (thumbnailId: string) => Promise<ThumbnailExportResult>;
     deleteThumbnail: (thumbnailId: string) => Promise<KanbanCard>;
     setCoverThumbnail: (thumbnailId: string) => Promise<KanbanCard>;
     addReference: (
@@ -808,6 +942,50 @@ export type IsitubeAPI = {
     get: (videoId: string) => Promise<VideoTranscript | null>;
     extract: (videoId: string) => Promise<TranscriptExtractionResult>;
     export: (videoId: string, format: TranscriptExportFormat) => Promise<TranscriptExportResult>;
+  };
+  thumbnails: {
+    listAssets: (kind?: ThumbnailAssetKind) => Promise<ThumbnailAsset[]>;
+    addAssetFromUpload: (upload: ThumbnailAssetUpload) => Promise<ThumbnailAsset>;
+    addAssetFromVideo: (
+      videoId: string,
+      kind?: ThumbnailAssetKind,
+      label?: string
+    ) => Promise<ThumbnailAsset>;
+    pickAutoStyleRef: () => Promise<ThumbnailAsset | null>;
+    deleteAsset: (id: string) => Promise<void>;
+    searchVideos: (query: string) => Promise<VideoThumbnailHit[]>;
+    listCharacters: () => Promise<ThumbnailCharacter[]>;
+    createCharacter: (name: string, notes?: string | null) => Promise<ThumbnailCharacter>;
+    addCharacterPhotos: (
+      characterId: string,
+      photos: ImageUpload[]
+    ) => Promise<ThumbnailCharacter>;
+    removeCharacterPhoto: (photoId: string) => Promise<void>;
+    renameCharacter: (
+      id: string,
+      name: string,
+      notes?: string | null
+    ) => Promise<ThumbnailCharacter>;
+    deleteCharacter: (id: string) => Promise<void>;
+    listScenes: () => Promise<ThumbnailScene[]>;
+    createScene: (name: string, photo: ImageUpload) => Promise<ThumbnailScene>;
+    renameScene: (id: string, name: string) => Promise<ThumbnailScene>;
+    deleteScene: (id: string) => Promise<void>;
+    /** Lê a referência de estilo + instruções e devolve um prompt detalhado pronto. */
+    buildPrompt: (
+      styleAssetId: string,
+      instructions: string,
+      hasScene: boolean
+    ) => Promise<string>;
+    generate: (input: ThumbnailGenerateInput) => Promise<ThumbnailGenerateResult>;
+    listGenerations: () => Promise<ThumbnailGeneration[]>;
+    /** Busca gerações por código (id) ou termo do prompt — pra puxar pro Kanban. */
+    searchGenerations: (query: string) => Promise<ThumbnailGeneration[]>;
+    deleteGeneration: (id: string) => Promise<void>;
+    export: (id: string) => Promise<ThumbnailExportResult>;
+    status: () => Promise<ThumbnailStudioStatus>;
+    /** Cotação USD→BRL atual (cache 6h no main) pra exibir custos em real. */
+    usdBrlRate: () => Promise<number>;
   };
   license: {
     get: (forceRefresh?: boolean) => Promise<LicenseInfo>;

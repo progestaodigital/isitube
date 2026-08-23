@@ -2,11 +2,13 @@ import { ipcMain } from 'electron';
 import {
   addReference,
   addThumbnail,
+  addThumbnailFromGeneration,
   createCard,
   createColumn,
   deleteCard,
   deleteColumn,
   deleteThumbnail,
+  exportCardThumbnail,
   getBoard,
   moveCard,
   removeReference,
@@ -123,6 +125,23 @@ export function registerKanbanHandlers(): void {
     }
     const u: KanbanThumbnailUpload = { base64: o.base64, mimeType: o.mimeType };
     return addThumbnail(cardId, u);
+  });
+
+  ipcMain.handle(
+    'kanban:add-thumbnail-from-generation',
+    async (_e, cardId: unknown, generationId: unknown) => {
+      if (typeof cardId !== 'string' || typeof generationId !== 'string') {
+        throw new Error('kanban:add-thumbnail-from-generation expects (cardId, generationId)');
+      }
+      return addThumbnailFromGeneration(cardId, generationId);
+    }
+  );
+
+  ipcMain.handle('kanban:export-thumbnail', async (_e, thumbnailId: unknown) => {
+    if (typeof thumbnailId !== 'string') {
+      throw new Error('kanban:export-thumbnail expects a thumbnailId');
+    }
+    return exportCardThumbnail(thumbnailId);
   });
 
   ipcMain.handle('kanban:delete-thumbnail', async (_e, thumbnailId: unknown) => {

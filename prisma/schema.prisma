@@ -409,3 +409,113 @@ model KanbanCardReference {
   @@index([videoId])
   @@map("kanban_card_references")
 }
+
+// =============================================================================
+// Thumbnail Studio (Module 7) — geração de thumbnails com IA (Gemini).
+//
+// Assets de referência reusáveis (rosto/cenário/estilo) + histórico de gerações.
+// Imagens guardadas como BLOB (mesmo padrão do KanbanCardThumbnail) pra entrarem
+// no backup do .db e reusarem o fluxo base64 → BLOB → data URL do renderer.
+// =============================================================================
+
+model ThumbnailAsset {
+  id       String @id @default(uuid())
+  // 'face' (identidade do criador) | 'scene' (fundo/cenário) | 'style' (thumb vencedora de referência)
+  kind     String
+  label    String
+  // Bytes da imagem + mime type. Tamanhos típicos: 100kB-1.5MB (downscale no ingest).
+  data     Bytes
+  mimeType String @map("mime_type")
+  width    Int?
+  height   Int?
+  // 'upload' (usuário subiu) | 'library' (materializado de um vídeo monitorado)
+  sourceType    String  @map("source_type")
+  sourceVideoId String? @map("source_video_id")
+  // Descrição de estilo gerada por IA (visão), cacheada. Usada como texto na
+  // geração — evita mandar a imagem da referência (e a pessoa dela) pro gerador.
+  styleDescription String? @map("style_description")
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  syncedAt  DateTime? @map("synced_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  @@index([kind, createdAt])
+  @@map("thumbnail_assets")
+}
+
+model ThumbnailGeneration {
+  id          String @id @default(uuid())
+  prompt      String
+  // Ids dos ThumbnailAsset usados como referência (JSON array of strings).
+  refAssetIds String @map("ref_asset_ids")
+  // 'gemini' | 'mock'
+  provider    String
+  model       String
+  aspectRatio String @default("16:9") @map("aspect_ratio")
+  // Bytes da imagem gerada + mime type.
+  data     Bytes
+  mimeType String @map("mime_type")
+  // Estimativa de custo em USD dessa geração (null pro mock).
+  costEstimateUsd Float? @map("cost_estimate_usd")
+  // Personagem/cenário usados (ids soltos, sem FK — sobrevivem à exclusão deles).
+  characterId String? @map("character_id")
+  sceneId     String? @map("scene_id")
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  syncedAt  DateTime? @map("synced_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  @@index([createdAt])
+  @@map("thumbnail_generations")
+}
+
+// Personagem: identidade reusável do criador. Agrupa N fotos (recomendado 5-10)
+// pra a IA aprender rosto/corpo. Na geração o usuário seleciona 1 personagem.
+model ThumbnailCharacter {
+  id     String                    @id @default(uuid())
+  name   String
+  notes  String?
+  photos ThumbnailCharacterPhoto[]
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  syncedAt  DateTime? @map("synced_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  @@map("thumbnail_characters")
+}
+
+model ThumbnailCharacterPhoto {
+  id          String             @id @default(uuid())
+  characterId String             @map("character_id")
+  character   ThumbnailCharacter @relation(fields: [characterId], references: [id], onDelete: Cascade)
+  data        Bytes
+  mimeType    String             @map("mime_type")
+  width       Int?
+  height      Int?
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([characterId])
+  @@map("thumbnail_character_photos")
+}
+
+// Cenário: fundo reusável (foto do set). Uma imagem + nome. Na geração é
+// opcional (usuário decide se usa e qual).
+model ThumbnailScene {
+  id       String @id @default(uuid())
+  name     String
+  data     Bytes
+  mimeType String @map("mime_type")
+  width    Int?
+  height   Int?
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  syncedAt  DateTime? @map("synced_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  @@map("thumbnail_scenes")
+}

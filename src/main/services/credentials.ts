@@ -12,6 +12,7 @@ const ALL_PROVIDERS: CredentialProvider[] = [
   'anthropic',
   'youtube',
   'keywords_everywhere',
+  'google_ai',
   'github',
 ];
 
@@ -102,6 +103,9 @@ export async function testCredential(
       break;
     case 'keywords_everywhere':
       result = await testKeywordsEverywhere(plainKey);
+      break;
+    case 'google_ai':
+      result = await testGoogleAI(plainKey);
       break;
     case 'github':
       result = await testGithub(plainKey);
@@ -231,6 +235,38 @@ async function testYoutube(plainKey: string): Promise<CredentialActionResult> {
       return {
         success: false,
         message: apiMsg ?? 'Chave rejeitada pela Google API (verifique se a YouTube Data API v3 está habilitada).',
+      };
+    }
+    return { success: false, message: apiMsg ?? `Falha (HTTP ${res.status}).` };
+  } catch (err) {
+    return {
+      success: false,
+      message: err instanceof Error ? err.message : 'Falha de rede ao testar a chave.',
+    };
+  }
+}
+
+async function testGoogleAI(plainKey: string): Promise<CredentialActionResult> {
+  try {
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(plainKey)}`
+    );
+    if (res.ok) {
+      return { success: true, message: 'Chave válida — Google AI (Gemini) respondeu OK.' };
+    }
+    let apiMsg: string | undefined;
+    try {
+      const body = await res.json();
+      apiMsg = body?.error?.message;
+    } catch {
+      /* swallow non-JSON */
+    }
+    if (res.status === 400 || res.status === 403) {
+      return {
+        success: false,
+        message:
+          apiMsg ??
+          'Chave rejeitada pelo Google AI (verifique se a Generative Language API está habilitada no seu projeto).',
       };
     }
     return { success: false, message: apiMsg ?? `Falha (HTTP ${res.status}).` };
