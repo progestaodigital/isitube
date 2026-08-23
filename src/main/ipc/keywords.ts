@@ -1,6 +1,7 @@
 import { ipcMain } from 'electron';
 import {
   autocomplete,
+  getRelatedKeywords,
   getSourceStatuses,
   listHistory,
   searchKeyword,
@@ -78,6 +79,13 @@ export function registerKeywordsHandlers(): void {
       throw new Error('keywords:exclude-suggestion expects a non-empty string');
     }
     await excludeSuggestion(term);
+  });
+
+  ipcMain.handle('keywords:related-keywords', async (_event, term: unknown) => {
+    if (typeof term !== 'string' || term.trim().length === 0) {
+      throw new Error('keywords:related-keywords expects a non-empty string');
+    }
+    return getRelatedKeywords(term);
   });
 
   ipcMain.handle('keywords:test-trends', async () => {

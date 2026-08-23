@@ -76,10 +76,31 @@ export type ScrapingData = {
   competitionScore: number;
 };
 
+export type MonthlySearch = {
+  year: number;
+  month: number; // 1-12
+  searchVolume: number;
+};
+
 export type KeywordsEverywhereData = {
   volume: number;
   cpc: number;
   difficultyScore: number;
+  // Enriquecimentos do DataForSEO (opcionais — mock/KE-real não preenchem):
+  clickstreamVolume?: number | null; // volume clickstream (melhor cobertura long-tail)
+  monthlySearches?: MonthlySearch[]; // últimos 12 meses (sazonalidade da própria keyword)
+};
+
+export type RelatedKeyword = {
+  keyword: string;
+  volume: number | null;
+  difficultyScore: number | null;
+  cpc: number | null;
+};
+
+export type RelatedKeywordsResult = {
+  seed: string;
+  items: RelatedKeyword[];
 };
 
 export type TrendsTimeSeriesPoint = {
@@ -983,6 +1004,7 @@ export type IsitubeAPI = {
     getSuggestions: () => Promise<KeywordSuggestionsPayload>;
     excludeSuggestion: (term: string) => Promise<void>;
     testTrends: () => Promise<{ success: boolean; message: string }>;
+    relatedKeywords: (term: string) => Promise<RelatedKeywordsResult>;
   };
   channels: {
     add: (urlOrId: string) => Promise<AddChannelResult>;

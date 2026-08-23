@@ -32,6 +32,7 @@ import type {
   KeywordSource,
   KeywordSourceStatuses,
   KeywordSuggestionsPayload,
+  RelatedKeywordsResult,
   LicenseInfo,
   MissedTask,
   ProviderSnapshot,
@@ -117,6 +118,8 @@ const api: IsitubeAPI = {
       ipcRenderer.invoke('keywords:exclude-suggestion', term),
     testTrends: (): Promise<{ success: boolean; message: string }> =>
       ipcRenderer.invoke('keywords:test-trends'),
+    relatedKeywords: (term: string): Promise<RelatedKeywordsResult> =>
+      ipcRenderer.invoke('keywords:related-keywords', term),
   },
 
   channels: {

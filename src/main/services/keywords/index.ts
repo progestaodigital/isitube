@@ -19,6 +19,7 @@ import type {
   KeywordSource,
   KeywordSourceStatuses,
   KeywordSearchOptions,
+  RelatedKeywordsResult,
 } from '@shared/types';
 
 const SETTING_KEYS = {
@@ -141,6 +142,31 @@ export async function searchKeyword(
   const result = await enrichKeyword(normalized, enabled, providers);
   await persistSearch(result);
   return result;
+}
+
+async function buildDataForSEOProvider(): Promise<DataForSEOProvider> {
+  const dfsStatus = await getCredentialStatus('dataforseo');
+  if (dfsStatus?.status !== 'valid' || !dfsStatus.hasValue) {
+    throw new Error('Configure o DataForSEO nas Configurações pra ver ideias de palavras-chave.');
+  }
+  const raw = await getCredentialPlainText('dataforseo');
+  const creds = raw ? parseDfsCreds(raw) : null;
+  if (!creds) {
+    throw new Error('Credenciais do DataForSEO inválidas. Reconfigure nas Configurações.');
+  }
+  return new DataForSEOProvider(creds.login, creds.password);
+}
+
+/**
+ * Ideias de palavras-chave relacionadas via DataForSEO (volume real). Chamada
+ * paga separada — disparada on-demand pela UI, não em toda busca.
+ */
+export async function getRelatedKeywords(term: string): Promise<RelatedKeywordsResult> {
+  const seed = term.trim();
+  if (seed.length === 0) throw new Error('Termo vazio.');
+  const provider = await buildDataForSEOProvider();
+  const items = await provider.getIdeas(seed);
+  return { seed, items };
 }
 
 export async function listHistory(limit = 20): Promise<KeywordHistoryItem[]> {

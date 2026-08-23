@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { ChevronDown, ChevronUp, RefreshCw, TrendingDown, TrendingUp, Minus } from 'lucide-react';
-import type { KeywordResult, ScoreComponent } from '@shared/types';
+import type { KeywordResult, MonthlySearch, ScoreComponent } from '@shared/types';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { cn } from '../../lib/cn';
@@ -192,14 +192,54 @@ function KeywordsEverywhereCard({ result }: { result: KeywordResult }) {
         Volume de busca
       </p>
       {data ? (
-        <dl className="mt-2 space-y-1.5 text-sm">
-          <Row label="Volume mensal" value={data.volume.toLocaleString('pt-BR')} />
-          <Row label="CPC" value={`US$ ${data.cpc.toFixed(2)}`} />
-          <Row label="Dificuldade" value={`${data.difficultyScore}/100`} />
-        </dl>
+        <>
+          <dl className="mt-2 space-y-1.5 text-sm">
+            <Row label="Volume mensal" value={data.volume.toLocaleString('pt-BR')} />
+            {typeof data.clickstreamVolume === 'number' &&
+              data.clickstreamVolume !== data.volume && (
+                <Row
+                  label="Volume clickstream"
+                  value={data.clickstreamVolume.toLocaleString('pt-BR')}
+                />
+              )}
+            <Row label="CPC" value={`US$ ${data.cpc.toFixed(2)}`} />
+            <Row label="Dificuldade" value={`${data.difficultyScore}/100`} />
+          </dl>
+          {data.monthlySearches && data.monthlySearches.length > 0 && (
+            <SeasonalityChart data={data.monthlySearches} />
+          )}
+        </>
       ) : (
         <UnavailableMessage status={result.keywordsEverywhere.status} message={result.keywordsEverywhere.errorMessage} />
       )}
+    </div>
+  );
+}
+
+const MONTH_LABELS = [
+  'jan', 'fev', 'mar', 'abr', 'mai', 'jun',
+  'jul', 'ago', 'set', 'out', 'nov', 'dez',
+];
+
+function SeasonalityChart({ data }: { data: MonthlySearch[] }) {
+  const max = Math.max(...data.map((m) => m.searchVolume), 1);
+  const peak = data.reduce((a, b) => (b.searchVolume > a.searchVolume ? b : a), data[0]);
+  return (
+    <div className="mt-3 border-t border-zinc-200 pt-2 dark:border-zinc-800">
+      <p className="mb-1.5 text-[11px] font-medium text-zinc-500">Sazonalidade (12 meses)</p>
+      <div className="flex h-12 items-end gap-0.5">
+        {data.map((m) => (
+          <div
+            key={`${m.year}-${m.month}`}
+            className="flex-1 rounded-sm bg-violet-400/70 dark:bg-violet-500/60"
+            style={{ height: `${Math.max(4, (m.searchVolume / max) * 100)}%` }}
+            title={`${MONTH_LABELS[m.month - 1]}/${String(m.year).slice(2)}: ${m.searchVolume.toLocaleString('pt-BR')}`}
+          />
+        ))}
+      </div>
+      <p className="mt-1 text-[11px] text-zinc-500">
+        Pico em {MONTH_LABELS[peak.month - 1]} · {peak.searchVolume.toLocaleString('pt-BR')} buscas
+      </p>
     </div>
   );
 }

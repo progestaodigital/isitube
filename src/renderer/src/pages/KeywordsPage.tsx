@@ -5,6 +5,7 @@ import type { KeywordHistoryItem, KeywordResult, KeywordSourceStatuses } from '@
 import { SearchBar } from './keywords/SearchBar';
 import { SourceStatusBar } from './keywords/SourceStatusBar';
 import { KeywordResultCard } from './keywords/KeywordResultCard';
+import { RelatedKeywordsPanel } from './keywords/RelatedKeywordsPanel';
 import { HistoryList } from './keywords/HistoryList';
 import { HelpDialog } from './keywords/HelpDialog';
 import { SuggestionsPanel } from './keywords/SuggestionsPanel';
@@ -119,11 +120,14 @@ export function KeywordsPage() {
       </Card>
 
       {result && (
-        <KeywordResultCard
-          result={result}
-          onRefresh={() => runSearch(result.term, true)}
-          busy={busy}
-        />
+        <>
+          <KeywordResultCard
+            result={result}
+            onRefresh={() => runSearch(result.term, true)}
+            busy={busy}
+          />
+          <RelatedKeywordsPanel term={result.term} onPick={handlePickIdea} />
+        </>
       )}
 
       <HistoryList items={history} onPick={(term) => runSearch(term)} />
