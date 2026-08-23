@@ -8,7 +8,7 @@ interface SourceStatusBarProps {
 
 const SOURCES = [
   { key: 'scraping', label: 'Scraping' },
-  { key: 'keywordsEverywhere', label: 'Keywords Everywhere' },
+  { key: 'keywordsEverywhere', label: 'Volume de busca' },
   { key: 'trends', label: 'Tendências' },
 ] as const;
 

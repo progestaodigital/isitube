@@ -11,6 +11,7 @@ import { autocomplete } from './autocomplete';
 import { KeywordsEverywhereProvider } from './providers/keywords-everywhere';
 import { ScrapingRealProvider } from './providers/scraping-real';
 import { KeywordsEverywhereRealProvider } from './providers/keywords-everywhere-real';
+import { DataForSEOProvider } from './providers/dataforseo';
 import { GoogleTrendsRealProvider } from './providers/trends-real';
 import type {
   KeywordHistoryItem,
@@ -81,15 +82,35 @@ async function buildSourceEnabledMap(): Promise<SourceEnabledMap> {
  *                          falls back to mock otherwise so the rest of the
  *                          score still works
  */
+function parseDfsCreds(raw: string): { login: string; password: string } | null {
+  try {
+    const o = JSON.parse(raw) as { login?: string; password?: string };
+    if (o.login && o.password) return { login: o.login, password: o.password };
+  } catch {
+    /* malformado */
+  }
+  return null;
+}
+
 async function buildProviders(): Promise<Providers> {
   const scraping = new ScrapingRealProvider();
   const trends = new GoogleTrendsRealProvider();
 
-  const keStatus = await getCredentialStatus('keywords_everywhere');
+  // Slot de volume/dificuldade: prefere DataForSEO (dado melhor); cai no Keywords
+  // Everywhere se só ele estiver configurado; senão, mock (mantém o score vivo).
   let keywordsEverywhere: Providers['keywordsEverywhere'] = new KeywordsEverywhereProvider();
-  if (keStatus?.status === 'valid' && keStatus.hasValue) {
-    const key = await getCredentialPlainText('keywords_everywhere');
-    if (key) keywordsEverywhere = new KeywordsEverywhereRealProvider(key);
+
+  const dfsStatus = await getCredentialStatus('dataforseo');
+  if (dfsStatus?.status === 'valid' && dfsStatus.hasValue) {
+    const raw = await getCredentialPlainText('dataforseo');
+    const creds = raw ? parseDfsCreds(raw) : null;
+    if (creds) keywordsEverywhere = new DataForSEOProvider(creds.login, creds.password);
+  } else {
+    const keStatus = await getCredentialStatus('keywords_everywhere');
+    if (keStatus?.status === 'valid' && keStatus.hasValue) {
+      const key = await getCredentialPlainText('keywords_everywhere');
+      if (key) keywordsEverywhere = new KeywordsEverywhereRealProvider(key);
+    }
   }
 
   return { scraping, keywordsEverywhere, trends };

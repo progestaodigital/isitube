@@ -9,6 +9,7 @@ export type CredentialProvider =
   | 'anthropic'
   | 'youtube'
   | 'keywords_everywhere'
+  | 'dataforseo'
   | 'google_ai';
 
 export type CredentialStatus = {
@@ -547,7 +548,8 @@ export type ProviderKey =
   | 'isipanel-validate'
   | 'github'
   | 'gemini-image'
-  | 'youtube-analytics';
+  | 'youtube-analytics'
+  | 'dataforseo';
 
 export type ProviderSnapshot = {
   key: ProviderKey;

@@ -189,7 +189,7 @@ function KeywordsEverywhereCard({ result }: { result: KeywordResult }) {
   return (
     <div className="rounded-lg border border-zinc-200 p-3 dark:border-zinc-800">
       <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500">
-        Keywords Everywhere
+        Volume de busca
       </p>
       {data ? (
         <dl className="mt-2 space-y-1.5 text-sm">

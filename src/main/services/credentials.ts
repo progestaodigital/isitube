@@ -12,6 +12,7 @@ const ALL_PROVIDERS: CredentialProvider[] = [
   'anthropic',
   'youtube',
   'keywords_everywhere',
+  'dataforseo',
   'google_ai',
   'github',
 ];
@@ -103,6 +104,9 @@ export async function testCredential(
       break;
     case 'keywords_everywhere':
       result = await testKeywordsEverywhere(plainKey);
+      break;
+    case 'dataforseo':
+      result = await testDataForSEO(plainKey);
       break;
     case 'google_ai':
       result = await testGoogleAI(plainKey);
@@ -242,6 +246,51 @@ async function testYoutube(plainKey: string): Promise<CredentialActionResult> {
     return {
       success: false,
       message: err instanceof Error ? err.message : 'Falha de rede ao testar a chave.',
+    };
+  }
+}
+
+async function testDataForSEO(plainKey: string): Promise<CredentialActionResult> {
+  let login = '';
+  let password = '';
+  try {
+    const o = JSON.parse(plainKey) as { login?: string; password?: string };
+    login = (o.login ?? '').trim();
+    password = (o.password ?? '').trim();
+  } catch {
+    return { success: false, message: 'Credencial do DataForSEO malformada.' };
+  }
+  if (!login || !password) {
+    return { success: false, message: 'Login e senha do DataForSEO são obrigatórios.' };
+  }
+  try {
+    const auth = Buffer.from(`${login}:${password}`).toString('base64');
+    const res = await fetch('https://api.dataforseo.com/v3/appendix/user_data', {
+      headers: { Authorization: `Basic ${auth}` },
+    });
+    if (res.status === 401) {
+      return { success: false, message: 'Login ou senha rejeitados pelo DataForSEO (401).' };
+    }
+    const json = (await res.json().catch(() => null)) as {
+      status_code?: number;
+      status_message?: string;
+      tasks?: Array<{ result?: Array<{ money?: { balance?: number } }> }>;
+    } | null;
+    if (res.ok && json?.status_code === 20000) {
+      const balance = json.tasks?.[0]?.result?.[0]?.money?.balance;
+      return {
+        success: true,
+        message:
+          typeof balance === 'number'
+            ? `Conectado — saldo US$ ${balance.toFixed(2)}.`
+            : 'Conectado ao DataForSEO.',
+      };
+    }
+    return { success: false, message: json?.status_message ?? `Falha (HTTP ${res.status}).` };
+  } catch (err) {
+    return {
+      success: false,
+      message: err instanceof Error ? err.message : 'Falha de rede ao testar o DataForSEO.',
     };
   }
 }

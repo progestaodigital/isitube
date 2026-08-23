@@ -26,6 +26,7 @@ const DISPLAY_ORDER: ProviderKey[] = [
   'github',
   'gemini-image',
   'youtube-analytics',
+  'dataforseo',
 ];
 
 const LABELS: Record<ProviderKey, { name: string; description: string }> = {
@@ -72,6 +73,10 @@ const LABELS: Record<ProviderKey, { name: string; description: string }> = {
   'youtube-analytics': {
     name: 'YouTube Analytics (canal próprio)',
     description: 'OAuth + relatórios reais do seu canal (Pro)',
+  },
+  dataforseo: {
+    name: 'DataForSEO',
+    description: 'Volume/dificuldade/intenção + SERP (Pro BYOK)',
   },
 };
 

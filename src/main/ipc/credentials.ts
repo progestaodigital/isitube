@@ -11,6 +11,7 @@ const VALID_PROVIDERS: CredentialProvider[] = [
   'anthropic',
   'youtube',
   'keywords_everywhere',
+  'dataforseo',
   'google_ai',
   'github',
 ];

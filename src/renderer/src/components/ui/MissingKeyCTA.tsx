@@ -13,6 +13,7 @@ const providerLabels: Record<CredentialProvider, string> = {
   anthropic: 'Anthropic Claude',
   youtube: 'YouTube Data API',
   keywords_everywhere: 'Keywords Everywhere',
+  dataforseo: 'DataForSEO',
   google_ai: 'Google AI (Gemini)',
 };
 
@@ -20,6 +21,7 @@ const providerSettingsHint: Record<CredentialProvider, string> = {
   anthropic: 'Configurações → Inteligência Artificial',
   youtube: 'Configurações → YouTube Data API',
   keywords_everywhere: 'Configurações → Keywords Everywhere',
+  dataforseo: 'Configurações → DataForSEO',
   google_ai: 'Configurações → Geração de thumbnails (Gemini)',
 };
 

@@ -2,6 +2,7 @@ import { Crown, ExternalLink } from 'lucide-react';
 import { AISection } from './settings/AISection';
 import { YouTubeSection } from './settings/YouTubeSection';
 import { KeywordsEverywhereSection } from './settings/KeywordsEverywhereSection';
+import { DataForSEOSection } from './settings/DataForSEOSection';
 import { ThumbnailsSection } from './settings/ThumbnailsSection';
 import { TrendsSection } from './settings/TrendsSection';
 import { KeywordSourcesSection } from './settings/KeywordSourcesSection';
@@ -41,6 +42,7 @@ export function SettingsPage() {
         <>
           <AISection />
           <YouTubeSection />
+          <DataForSEOSection />
           <KeywordsEverywhereSection />
           <ThumbnailsSection />
         </>
