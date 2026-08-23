@@ -589,6 +589,85 @@ export async function generate(input: ThumbnailGenerateInput): Promise<Thumbnail
   };
 }
 
+/**
+ * Ajusta uma thumbnail já gerada aplicando um pedido em texto (edição via
+ * Gemini). Mantém o rosto fiel reusando as fotos do personagem da geração
+ * original. Salva o resultado como uma nova geração (histórico preserva as duas).
+ */
+export async function adjustGeneration(
+  generationId: string,
+  instruction: string
+): Promise<ThumbnailGenerateResult> {
+  const ins = instruction?.trim();
+  if (!ins) return { success: false, message: 'Descreva o ajuste que você quer.' };
+
+  const provider = await selectImageProvider();
+  if (!provider) {
+    const status = await getStudioStatus();
+    const message =
+      status.blockedReason === 'iniciante'
+        ? 'Ajustar thumbnails está disponível no plano Pro.'
+        : status.blockedReason === 'no-key'
+          ? 'Configure sua chave do Google AI (Gemini) em Configurações → Geração de thumbnails.'
+          : 'Licença inválida — não é possível ajustar agora.';
+    return { success: false, message };
+  }
+
+  const gen = await getPrisma().thumbnailGeneration.findFirst({
+    where: { id: generationId, deletedAt: null },
+  });
+  if (!gen) return { success: false, message: 'Thumbnail não encontrada.' };
+
+  const identityRefs: ImageReference[] = [];
+  if (gen.characterId) {
+    const char = await getPrisma().thumbnailCharacter.findFirst({
+      where: { id: gen.characterId, deletedAt: null },
+      include: { photos: { orderBy: { createdAt: 'asc' }, take: MAX_CHAR_PHOTOS } },
+    });
+    if (char) {
+      for (const p of char.photos) {
+        identityRefs.push({ kind: 'face', data: Buffer.from(p.data), mimeType: p.mimeType });
+      }
+    }
+  }
+
+  let result;
+  try {
+    result = await provider.editImage({
+      baseImage: { data: Buffer.from(gen.data), mimeType: gen.mimeType },
+      instruction: ins,
+      identityRefs,
+    });
+  } catch (err) {
+    return { success: false, message: err instanceof Error ? err.message : 'Falha ao ajustar.' };
+  }
+
+  if (result.images.length === 0) {
+    return { success: false, message: 'O modelo não retornou imagem pro ajuste.' };
+  }
+
+  const saved: ThumbnailGeneration[] = [];
+  for (const img of result.images) {
+    const row = await getPrisma().thumbnailGeneration.create({
+      data: {
+        prompt: `${gen.prompt}\n\n[ajuste] ${ins}`,
+        refAssetIds: gen.refAssetIds,
+        characterId: gen.characterId,
+        sceneId: gen.sceneId,
+        provider: provider.name,
+        model: provider.model,
+        aspectRatio: gen.aspectRatio,
+        data: img.data,
+        mimeType: img.mimeType,
+        costEstimateUsd: result.costEstimateUsd,
+      },
+    });
+    saved.push(projectGeneration(row));
+  }
+
+  return { success: true, message: 'Ajuste aplicado.', generations: saved };
+}
+
 export async function listGenerations(): Promise<ThumbnailGeneration[]> {
   const rows = await getPrisma().thumbnailGeneration.findMany({
     where: { deletedAt: null },

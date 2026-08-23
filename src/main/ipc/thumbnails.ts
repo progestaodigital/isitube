@@ -3,6 +3,7 @@ import {
   addAssetFromUpload,
   addAssetFromVideo,
   addCharacterPhotos,
+  adjustGeneration,
   buildPromptFromReference,
   createCharacter,
   createScene,
@@ -170,6 +171,13 @@ export function registerThumbnailsHandlers(): void {
       aspectRatio: typeof i.aspectRatio === 'string' ? i.aspectRatio : undefined,
       count: typeof i.count === 'number' ? i.count : undefined,
     });
+  });
+
+  ipcMain.handle('thumbnails:adjust', async (_e, generationId: unknown, instruction: unknown) => {
+    if (typeof generationId !== 'string') {
+      throw new Error('thumbnails:adjust expects a generation id');
+    }
+    return adjustGeneration(generationId, typeof instruction === 'string' ? instruction : '');
   });
 
   ipcMain.handle(

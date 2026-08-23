@@ -10,6 +10,7 @@ import { registerKanbanHandlers } from './kanban';
 import { registerSearchHandlers } from './search';
 import { registerTranscriptsHandlers } from './transcripts';
 import { registerThumbnailsHandlers } from './thumbnails';
+import { registerYoutubeHandlers } from './youtube';
 import { registerLicenseHandlers } from './license';
 import { registerDialogHandlers } from './dialog';
 import { registerBackupHandlers } from './backup';
@@ -32,6 +33,7 @@ export function registerIpcHandlers(): void {
   registerSearchHandlers();
   registerTranscriptsHandlers();
   registerThumbnailsHandlers();
+  registerYoutubeHandlers();
   registerLicenseHandlers();
   registerDialogHandlers();
   registerBackupHandlers();

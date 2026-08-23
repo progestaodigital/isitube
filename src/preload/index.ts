@@ -70,6 +70,10 @@ import type {
   ThumbnailScene,
   ImageUpload,
   VideoThumbnailHit,
+  YoutubeConnectionStatus,
+  YoutubeConnectResult,
+  YoutubeChannelSummary,
+  ChannelAuditResult,
 } from '@shared/types';
 
 const api: IsitubeAPI = {
@@ -342,6 +346,8 @@ const api: IsitubeAPI = {
       ipcRenderer.invoke('thumbnails:build-prompt', styleAssetId, instructions, hasScene),
     generate: (input: ThumbnailGenerateInput): Promise<ThumbnailGenerateResult> =>
       ipcRenderer.invoke('thumbnails:generate', input),
+    adjust: (generationId: string, instruction: string): Promise<ThumbnailGenerateResult> =>
+      ipcRenderer.invoke('thumbnails:adjust', generationId, instruction),
     listGenerations: (): Promise<ThumbnailGeneration[]> =>
       ipcRenderer.invoke('thumbnails:list-generations'),
     searchGenerations: (query: string): Promise<ThumbnailGeneration[]> =>
@@ -352,6 +358,18 @@ const api: IsitubeAPI = {
       ipcRenderer.invoke('thumbnails:export', id),
     status: (): Promise<ThumbnailStudioStatus> => ipcRenderer.invoke('thumbnails:status'),
     usdBrlRate: (): Promise<number> => ipcRenderer.invoke('thumbnails:usd-brl-rate'),
+  },
+
+  youtube: {
+    status: (): Promise<YoutubeConnectionStatus> => ipcRenderer.invoke('youtube:status'),
+    setConfig: (clientId: string, clientSecret: string): Promise<YoutubeConnectionStatus> =>
+      ipcRenderer.invoke('youtube:set-config', clientId, clientSecret),
+    connect: (): Promise<YoutubeConnectResult> => ipcRenderer.invoke('youtube:connect'),
+    disconnect: (): Promise<void> => ipcRenderer.invoke('youtube:disconnect'),
+    getSummary: (days: number): Promise<YoutubeChannelSummary> =>
+      ipcRenderer.invoke('youtube:get-summary', days),
+    audit: (days: number): Promise<ChannelAuditResult> =>
+      ipcRenderer.invoke('youtube:audit', days),
   },
 
   license: {

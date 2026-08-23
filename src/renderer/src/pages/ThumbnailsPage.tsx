@@ -348,6 +348,16 @@ export function ThumbnailsPage() {
       showToast({ kind: 'error', title: 'Falha ao salvar', description: res.message });
   }
 
+  async function handleAdjust(genId: string, instruction: string) {
+    const res = await window.api.thumbnails.adjust(genId, instruction);
+    if (!res.success) {
+      showToast({ kind: 'error', title: 'Não foi possível ajustar', description: res.message });
+      return;
+    }
+    await refreshAll();
+    showToast({ kind: 'success', title: res.message });
+  }
+
   async function handleDeleteGeneration(id: string) {
     await window.api.thumbnails.deleteGeneration(id);
     await refreshAll();
@@ -666,6 +676,7 @@ export function ThumbnailsPage() {
                 usdBrl={usdBrl}
                 onExport={() => handleExport(g.id)}
                 onDelete={() => handleDeleteGeneration(g.id)}
+                onAdjust={handleAdjust}
               />
             ))}
           </div>
@@ -900,12 +911,30 @@ function GenerationCard({
   usdBrl,
   onExport,
   onDelete,
+  onAdjust,
 }: {
   gen: ThumbnailGeneration;
   usdBrl: number;
   onExport: () => void;
   onDelete: () => void;
+  onAdjust: (genId: string, instruction: string) => Promise<void>;
 }) {
+  const [open, setOpen] = useState(false);
+  const [instruction, setInstruction] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  async function apply() {
+    if (!instruction.trim()) return;
+    setBusy(true);
+    try {
+      await onAdjust(gen.id, instruction.trim());
+      setInstruction('');
+      setOpen(false);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <div className="overflow-hidden rounded-xl border border-zinc-200 dark:border-zinc-800">
       <img src={gen.dataUrl} alt="Thumbnail gerada" className="aspect-video w-full object-cover" />
@@ -928,6 +957,14 @@ function GenerationCard({
           </span>
           <div className="flex gap-1">
             <button
+              onClick={() => setOpen((v) => !v)}
+              title="Ajustar"
+              aria-label="Ajustar"
+              className="flex h-7 w-7 items-center justify-center rounded-full text-zinc-500 hover:bg-zinc-100 hover:text-violet-600 dark:hover:bg-zinc-800 dark:hover:text-violet-400"
+            >
+              <Wand2 className="h-4 w-4" />
+            </button>
+            <button
               onClick={onExport}
               title="Baixar"
               aria-label="Baixar"
@@ -945,6 +982,31 @@ function GenerationCard({
             </button>
           </div>
         </div>
+
+        {open && (
+          <div className="mt-2 space-y-2">
+            <input
+              value={instruction}
+              onChange={(e) => setInstruction(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && apply()}
+              placeholder={'Ajuste: ex. "muda o texto pra GANHEI R$50 MIL", "escurece o fundo"'}
+              className="w-full rounded-md border border-zinc-300 bg-white px-2 py-1.5 text-xs dark:border-zinc-700 dark:bg-zinc-900"
+            />
+            <Button
+              onClick={apply}
+              disabled={busy || !instruction.trim()}
+              variant="primary"
+              size="sm"
+            >
+              {busy ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Wand2 className="h-3.5 w-3.5" />
+              )}
+              {busy ? 'Ajustando…' : 'Aplicar ajuste'}
+            </Button>
+          </div>
+        )}
       </div>
     </div>
   );

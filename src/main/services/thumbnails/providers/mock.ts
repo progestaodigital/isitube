@@ -3,6 +3,7 @@ import type {
   GenerateThumbnailArgs,
   GenerateThumbnailResult,
   ImageProvider,
+  ImageReference,
 } from './types';
 
 // Provider de desenvolvimento: gera um gradiente determinístico (sem custo, sem
@@ -41,6 +42,18 @@ export class MockImageProvider implements ImageProvider {
     const img = nativeImage.createFromBitmap(buf, { width, height });
     await delay(400); // latência simulada pra UX de loading
     return { images: [{ data: img.toPNG(), mimeType: 'image/png' }], costEstimateUsd: null };
+  }
+
+  async editImage(args: {
+    baseImage: { data: Buffer; mimeType: string };
+    instruction: string;
+    identityRefs: ImageReference[];
+  }): Promise<GenerateThumbnailResult> {
+    return this.generate({
+      prompt: args.instruction,
+      references: args.identityRefs,
+      aspectRatio: '16:9',
+    });
   }
 
   async buildDetailedPrompt(

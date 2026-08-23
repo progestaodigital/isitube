@@ -519,3 +519,31 @@ model ThumbnailScene {
 
   @@map("thumbnail_scenes")
 }
+
+// =============================================================================
+// Canal próprio (OAuth + YouTube Analytics) — Módulo 8
+//
+// Singleton na prática (uma conexão por install). client_secret e refresh_token
+// ficam criptografados via safeStorage (DPAPI). O app troca o refresh_token por
+// access tokens e chama a YouTube Analytics API (retenção/CTR/AVD/receita).
+// O client OAuth é do PRÓPRIO projeto Google do usuário (BYOK, plano Pro).
+// =============================================================================
+model YoutubeConnection {
+  id             String    @id @default(uuid())
+  clientId       String    @map("client_id")
+  clientSecret   Bytes     @map("client_secret") // safeStorage-encrypted
+  refreshToken   Bytes?    @map("refresh_token") // safeStorage-encrypted
+  scope          String?
+  channelId      String?   @map("channel_id")
+  channelTitle   String?   @map("channel_title")
+  connectedAt    DateTime? @map("connected_at")
+  needsReconnect Boolean   @default(false) @map("needs_reconnect")
+  lastError      String?   @map("last_error")
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  syncedAt  DateTime? @map("synced_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  @@map("youtube_connections")
+}

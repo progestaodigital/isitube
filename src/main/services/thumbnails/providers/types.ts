@@ -48,4 +48,15 @@ export interface ImageProvider {
     instructions: string,
     options?: { hasScene?: boolean }
   ): Promise<string>;
+
+  /**
+   * Edita uma thumbnail já existente aplicando um ajuste em texto (ex: "muda o
+   * texto", "escurece o fundo"), preservando o resto. `identityRefs` (fotos do
+   * personagem) mantêm o rosto fiel durante a edição.
+   */
+  editImage(args: {
+    baseImage: { data: Buffer; mimeType: string };
+    instruction: string;
+    identityRefs: ImageReference[];
+  }): Promise<GenerateThumbnailResult>;
 }

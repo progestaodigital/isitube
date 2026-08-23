@@ -546,7 +546,8 @@ export type ProviderKey =
   | 'keywords-everywhere'
   | 'isipanel-validate'
   | 'github'
-  | 'gemini-image';
+  | 'gemini-image'
+  | 'youtube-analytics';
 
 export type ProviderSnapshot = {
   key: ProviderKey;
@@ -860,6 +861,73 @@ export type ThumbnailStudioStatus = {
 };
 
 // =============================================================================
+// Canal próprio (OAuth + YouTube Analytics) — Módulo 8
+// =============================================================================
+
+export type YoutubeConnectionStatus = {
+  /** Client ID/Secret já cadastrados. */
+  hasConfig: boolean;
+  /** Conectado e com refresh token válido. */
+  connected: boolean;
+  channelTitle: string | null;
+  connectedAt: string | null;
+  scope: string | null;
+  /** Refresh token expirou/revogado — precisa reconectar. */
+  needsReconnect: boolean;
+  lastError: string | null;
+};
+
+export type YoutubeConnectResult = {
+  success: boolean;
+  message: string;
+  status?: YoutubeConnectionStatus;
+};
+
+export type YoutubeChannelSummary = {
+  period: { startDate: string; endDate: string };
+  views: number;
+  estimatedMinutesWatched: number;
+  /** Duração média de visualização, em segundos. */
+  averageViewDuration: number;
+  /** Retenção média (0-100). */
+  averageViewPercentage: number;
+  subscribersGained: number;
+  subscribersLost: number;
+  likes: number;
+  comments: number;
+  shares: number;
+  /** Receita estimada na moeda da conta AdSense; null se indisponível. */
+  estimatedRevenue: number | null;
+  /** Impressões e CTR — null quando a API não expõe (só no Studio). */
+  impressions: number | null;
+  impressionCtr: number | null;
+  timeSeries: Array<{ date: string; views: number; estimatedMinutesWatched: number }>;
+};
+
+export type ChannelAuditFinding = {
+  title: string;
+  severity: 'alta' | 'media' | 'baixa';
+  detail: string;
+  recommendation: string;
+};
+
+export type ChannelAudit = {
+  summary: string;
+  verdict: string;
+  strengths: string[];
+  findings: ChannelAuditFinding[];
+  quickWins: string[];
+};
+
+export type ChannelAuditResult = ChannelAudit & { meta: AIGenerationMeta };
+
+export type ChannelAuditInput = {
+  periodDays: number;
+  current: Omit<YoutubeChannelSummary, 'timeSeries'>;
+  previous: Omit<YoutubeChannelSummary, 'timeSeries'>;
+};
+
+// =============================================================================
 // IPC bridge contract
 // =============================================================================
 
@@ -978,6 +1046,8 @@ export type IsitubeAPI = {
       hasScene: boolean
     ) => Promise<string>;
     generate: (input: ThumbnailGenerateInput) => Promise<ThumbnailGenerateResult>;
+    /** Ajusta uma geração existente (edição por texto) e salva como nova. */
+    adjust: (generationId: string, instruction: string) => Promise<ThumbnailGenerateResult>;
     listGenerations: () => Promise<ThumbnailGeneration[]>;
     /** Busca gerações por código (id) ou termo do prompt — pra puxar pro Kanban. */
     searchGenerations: (query: string) => Promise<ThumbnailGeneration[]>;
@@ -986,6 +1056,14 @@ export type IsitubeAPI = {
     status: () => Promise<ThumbnailStudioStatus>;
     /** Cotação USD→BRL atual (cache 6h no main) pra exibir custos em real. */
     usdBrlRate: () => Promise<number>;
+  };
+  youtube: {
+    status: () => Promise<YoutubeConnectionStatus>;
+    setConfig: (clientId: string, clientSecret: string) => Promise<YoutubeConnectionStatus>;
+    connect: () => Promise<YoutubeConnectResult>;
+    disconnect: () => Promise<void>;
+    getSummary: (days: number) => Promise<YoutubeChannelSummary>;
+    audit: (days: number) => Promise<ChannelAuditResult>;
   };
   license: {
     get: (forceRefresh?: boolean) => Promise<LicenseInfo>;

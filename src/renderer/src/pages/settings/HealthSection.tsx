@@ -25,6 +25,7 @@ const DISPLAY_ORDER: ProviderKey[] = [
   'isipanel-validate',
   'github',
   'gemini-image',
+  'youtube-analytics',
 ];
 
 const LABELS: Record<ProviderKey, { name: string; description: string }> = {
@@ -67,6 +68,10 @@ const LABELS: Record<ProviderKey, { name: string; description: string }> = {
   'gemini-image': {
     name: 'Gemini (geração de imagem)',
     description: 'Geração de thumbnails com IA (Pro BYOK)',
+  },
+  'youtube-analytics': {
+    name: 'YouTube Analytics (canal próprio)',
+    description: 'OAuth + relatórios reais do seu canal (Pro)',
   },
 };
 

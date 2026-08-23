@@ -2,6 +2,7 @@ import type {
   GenerateThumbnailArgs,
   GenerateThumbnailResult,
   ImageProvider,
+  ImageReference,
 } from './types';
 import { recordFailure, recordSuccess } from '../../telemetry/providers';
 
@@ -69,6 +70,21 @@ function buildInstruction(args: GenerateThumbnailArgs): string {
   return lines.join('\n');
 }
 
+function buildEditInstruction(instruction: string, hasIdentity: boolean): string {
+  const lines = [
+    'Edite a imagem de thumbnail fornecida (a primeira imagem) aplicando SOMENTE o ajuste pedido abaixo.',
+    'Preserve todo o resto: composição, enquadramento, pessoa, fundo, cores e textos que NÃO foram mencionados no ajuste.',
+    'A imagem final continua sendo uma thumbnail de YouTube 16:9, alta qualidade, com UMA única pessoa.',
+  ];
+  if (hasIdentity) {
+    lines.push(
+      'As demais imagens são fotos da pessoa — mantenha o rosto e a fisionomia fiéis a elas.'
+    );
+  }
+  lines.push(`Ajuste pedido: ${instruction}`);
+  return lines.join('\n');
+}
+
 export class GeminiImageProvider implements ImageProvider {
   readonly name = 'gemini' as const;
   readonly model = MODEL;
@@ -128,6 +144,73 @@ export class GeminiImageProvider implements ImageProvider {
         textPart
           ? `O Gemini não retornou imagem: ${textPart.slice(0, 200)}`
           : 'O Gemini não retornou nenhuma imagem pra esse pedido. Tente reformular o prompt.'
+      );
+    }
+
+    return { images, costEstimateUsd: COST_PER_IMAGE_USD };
+  }
+
+  async editImage(args: {
+    baseImage: { data: Buffer; mimeType: string };
+    instruction: string;
+    identityRefs: ImageReference[];
+  }): Promise<GenerateThumbnailResult> {
+    const parts: Array<Record<string, unknown>> = [
+      { text: buildEditInstruction(args.instruction, args.identityRefs.length > 0) },
+      {
+        inline_data: {
+          mime_type: args.baseImage.mimeType,
+          data: args.baseImage.data.toString('base64'),
+        },
+      },
+    ];
+    for (const ref of args.identityRefs) {
+      parts.push({
+        inline_data: { mime_type: ref.mimeType, data: ref.data.toString('base64') },
+      });
+    }
+
+    let json: any;
+    try {
+      const res = await fetch(`${ENDPOINT}?key=${encodeURIComponent(this.apiKey)}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contents: [{ role: 'user', parts }] }),
+      });
+      if (!res.ok) {
+        let msg = `Gemini API error ${res.status}`;
+        try {
+          const body = (await res.json()) as { error?: { message?: string } };
+          if (body?.error?.message) msg = body.error.message;
+        } catch {
+          /* swallow non-JSON */
+        }
+        throw new Error(msg);
+      }
+      json = await res.json();
+      recordSuccess('gemini-image');
+    } catch (err) {
+      recordFailure('gemini-image', err);
+      throw err;
+    }
+
+    const candidateParts: any[] = json?.candidates?.[0]?.content?.parts ?? [];
+    const images = candidateParts
+      .map((p) => p?.inlineData ?? p?.inline_data)
+      .filter((d) => d && typeof d.data === 'string')
+      .map((d) => ({
+        data: Buffer.from(d.data as string, 'base64'),
+        mimeType: (d.mimeType ?? d.mime_type ?? 'image/png') as string,
+      }));
+
+    if (images.length === 0) {
+      const textPart = candidateParts.find((p) => typeof p?.text === 'string')?.text as
+        | string
+        | undefined;
+      throw new Error(
+        textPart
+          ? `O Gemini não retornou imagem: ${textPart.slice(0, 200)}`
+          : 'O Gemini não retornou imagem pra esse ajuste.'
       );
     }
 

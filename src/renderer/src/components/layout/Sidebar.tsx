@@ -7,6 +7,7 @@ import {
   BookMarked,
   KanbanSquare,
   ImagePlus,
+  BarChart3,
   Settings,
   HelpCircle,
   type LucideIcon,
@@ -23,6 +24,7 @@ interface NavItem {
 const navItems: NavItem[] = [
   { icon: Home, label: 'Início', view: 'home' },
   { icon: Tv, label: 'Canais', view: 'channels' },
+  { icon: BarChart3, label: 'Meu canal', view: 'meu-canal' },
   { icon: Search, label: 'Palavras-chave', view: 'keywords' },
   { icon: FileText, label: 'Vídeos', view: 'videos' },
   { icon: BookMarked, label: 'Biblioteca', view: 'library' },

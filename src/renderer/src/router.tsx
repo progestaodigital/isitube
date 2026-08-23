@@ -6,6 +6,7 @@ import { VideosPage } from './pages/VideosPage';
 import { LibraryPage } from './pages/LibraryPage';
 import { KanbanPage } from './pages/KanbanPage';
 import { ThumbnailsPage } from './pages/ThumbnailsPage';
+import { MeuCanalPage } from './pages/MeuCanalPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { HelpPage } from './pages/HelpPage';
 
@@ -27,6 +28,8 @@ export function Router() {
       return <KanbanPage />;
     case 'thumbnails':
       return <ThumbnailsPage />;
+    case 'meu-canal':
+      return <MeuCanalPage />;
     case 'settings':
       return <SettingsPage />;
     case 'help':

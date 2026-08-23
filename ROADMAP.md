@@ -3,7 +3,7 @@
 > Software desktop de inteligência competitiva e planejamento de conteúdo para criadores no YouTube.
 > Stack: Electron + React + TypeScript + Vite + Prisma + SQLite + Vercel AI SDK + Claude.
 
-**Status atual:** Fase 12 concluída (Thumbnail Studio — personagens, cenários, referência→prompt detalhado via visão, custo em R$, integração com o Kanban; validado ao vivo) · Base v0.7.0 · **Próxima: Canal próprio (OAuth) + auditoria/analyze reais** (pré-requisito do app Google/OAuth já provisionado — ver memória `youtube-oauth-own-channel-setup`)
+**Status atual:** Fase 13 concluída (Canal próprio — OAuth + YouTube Analytics + agente de auditoria com Claude; validado ao vivo) · também: ajuste de thumbnails na Fase 12 · Base v0.7.0 · **Próxima: Aprofundar a auditoria** (top vídeos com retenção por vídeo, mais dimensões do Analytics, diagnóstico vídeo a vídeo)
 **Início:** Maio de 2026 · **MVP previsto:** 9-12 semanas
 
 ---
@@ -39,7 +39,8 @@ Estas regras valem em **todas as fases** e não devem ser quebradas sem decisão
 | 9 | Licenciamento real + proxy isipanel + two-slug | ✅ feito | IsiPanel validate + proxy server-side Anthropic/YouTube + plano Iniciante/Pro (v0.3.0) |
 | 10 | Polish dos providers reais + autocomplete + tela de Status | ✅ feito | Autocomplete real do YouTube + Trends rate-limit cooldown + telemetria por provider + tela "Status das integrações" (v0.4.0) |
 | 11 | Entitlement assinado (Ed25519) na validação de licença | ✅ feito | Verificação criptográfica do token do isipanel — gating confia só no JWT assinado quando presente; aditivo e com fallback pro JSON legado |
-| 12 | Thumbnail Studio (geração com IA) | ✅ feito | Personagens (fotos) + cenários + referência→prompt detalhado (visão) + Gemini Flash Image + custo em R$ + integração Kanban (Pro-BYOK) |
+| 12 | Thumbnail Studio (geração com IA) | ✅ feito | Personagens (fotos) + cenários + referência→prompt detalhado (visão) + Gemini Flash Image + custo em R$ + integração Kanban + ajuste de thumbnails (Pro-BYOK) |
+| 13 | Canal próprio (OAuth) + auditoria | ✅ feito | Meu canal: OAuth loopback + YouTube Analytics (retenção/AVD/views/inscritos/receita) + agente de auditoria com Claude (Pro-BYOK) |
 
 > Nota: as versões entre v0.4.0 e v0.6.2 (lixeira/retention, busca global, auto-update) não foram documentadas como fases neste arquivo. A Fase 11 retoma o registro a partir do trabalho de hardening de licença.
 
@@ -646,6 +647,34 @@ Estas regras valem em **todas as fases** e não devem ser quebradas sem decisão
 - Imagens como BLOB no banco (padrão Kanban) — entram no backup do `.db`.
 - `ImageProvider` abstrato pra trocar o motor sem tocar a UI.
 - Reuso dos outliers já calculados pra "thumbs acima da média" e auto-pick — zero schema novo além do link `sourceVideoId`.
+
+---
+
+## Fase 13 — Canal próprio (OAuth) + auditoria/analyze reais ✅
+
+**Objetivo:** Conectar o canal do próprio usuário via OAuth e trazer os relatórios reais (YouTube Analytics) — retenção, AVD, views, inscritos, receita — mais um agente de auditoria com IA em cima desses dados. Pré-requisito (app Google/OAuth) provisionado antes da fase (memória `youtube-oauth-own-channel-setup`).
+
+**Decisões de produto:** conectar o canal = **Pro** (OAuth do próprio projeto Google do usuário, BYOK). Client tipo "App para computador" → fluxo loopback + PKCE, sem redirect URI registrado. Escopos `yt-analytics.readonly` + `yt-analytics-monetary.readonly` (receita).
+
+**Entregue (3 fatias, validado ao vivo com o usuário):**
+
+*Fatia 1a — Conexão (OAuth):* schema `YoutubeConnection` (singleton; client_secret e refresh_token criptografados via safeStorage) + migration `add_youtube_connection`; `services/youtube-connect/oauth.ts` (Authorization Code + PKCE S256, servidor http loopback `127.0.0.1`, `shell.openExternal`, troca/refresh de tokens, `InvalidGrantError`); `services/youtube-connect/index.ts` (config/connect/disconnect/status + `getAccessToken()` com cache e detecção de expiração do modo Teste → `needsReconnect`); página **Meu canal** (novo item na Sidebar): colar Client ID/Secret, conectar (abre o navegador), status, reconectar/desconectar, upsell pro Iniciante.
+
+*Fatia 1b — Métricas reais:* `services/youtube-connect/analytics.ts` (`reports.query` com `ids=channel==MINE`: núcleo + receita best-effort + impressões/CTR best-effort + série diária); painel **Desempenho do canal** (stat cards + gráfico Views/dia reusando `LineChart` + seletor 7/28/90/365). Nota honesta: **CTR/impressões a API pública não expõe** (só no Studio); receita na moeda da conta AdSense.
+
+*Fatia 2 — Agente de auditoria:* `AIService.auditChannel()` + `prompts/channel-audit.md` — Claude recebe as métricas do período atual **vs** anterior e devolve JSON estruturado (veredito, pontos fortes, findings com severidade + ação, ganhos rápidos), ancorado nos números. IPC `youtube:audit`; UI: botão "Auditar com IA" + relatório renderizado. Precisa de chave Anthropic (Pro BYOK).
+
+*Incremento na Fase 12 (mesma rodada):* **Ajuste de thumbnails** — `ImageProvider.editImage` (Gemini edita a imagem base + instrução em texto, mantendo o rosto via fotos do personagem), serviço `adjustGeneration`, IPC `thumbnails:adjust`, botão "Ajustar" em cada thumb gerada (salva como nova geração).
+
+**Arquivos-chave:** `src/main/services/youtube-connect/{oauth,index,analytics}.ts`, `src/main/ipc/youtube.ts`, `src/main/services/ai/AIService.ts` (+`auditChannel`), `prompts/channel-audit.md`; `src/renderer/src/pages/MeuCanalPage.tsx` + Sidebar/rota/View; `prisma/schema.prisma` (+`YoutubeConnection`) + migration; `src/shared/types.ts` + preload (+`youtube` API, +`ProviderKey` `youtube-analytics`, +tipos audit/summary); Fase 12: `thumbnails/providers/{types,gemini,mock}.ts` + `thumbnails/index.ts` (+`editImage`/`adjustGeneration`), `ipc/thumbnails.ts`, `ThumbnailsPage.tsx`.
+
+**Decisões importantes:**
+- **Loopback + PKCE, client Desktop** — aceita qualquer porta, sem redirect URI; evita um app OAuth "da isi" (que exigiria verificação do Google pra escopo sensível). Cada usuário usa o próprio projeto Google.
+- **Modo Teste = refresh token de 7 dias** — o app detecta o `invalid_grant` e pede reconectar, sem quebrar.
+- **CTR/impressões não vêm da API pública** — mostrado honestamente, sem inventar.
+- **Auditoria = texto (Claude); thumbnail/ajuste = imagem (Gemini)** — chaves separadas.
+
+**Fora de escopo (vira a próxima fase "Aprofundar a auditoria"):** top vídeos com retenção por vídeo, mais dimensões do Analytics, diagnóstico vídeo a vídeo; resolver o nome do canal (hoje "Meu canal" genérico — a API de Analytics não retorna o título); OAuth pro Iniciante via broker no isipanel.
 
 ---
 

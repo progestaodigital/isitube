@@ -1,4 +1,10 @@
-import type { KeywordIdea, KeywordIdeasResult } from '@shared/types';
+import type {
+  ChannelAudit,
+  ChannelAuditInput,
+  ChannelAuditResult,
+  KeywordIdea,
+  KeywordIdeasResult,
+} from '@shared/types';
 import type { AIProvider } from './providers/types';
 import { loadPrompt } from './prompts';
 
@@ -29,6 +35,32 @@ export class AIService {
         provider: this.provider.name,
         model: this.provider.defaultModel,
         durationMs,
+      },
+    };
+  }
+
+  /**
+   * Auditoria do canal a partir das métricas REAIS (YouTube Analytics) do
+   * período atual + anterior. Devolve veredito, pontos fortes, o que corrigir
+   * (com severidade e recomendação) e ganhos rápidos — tudo ancorado nos números.
+   */
+  async auditChannel(input: ChannelAuditInput): Promise<ChannelAuditResult> {
+    const prompt = await loadPrompt('channel-audit', { data: JSON.stringify(input, null, 2) });
+    const startedAt = Date.now();
+
+    const { object } = await this.provider.generateJSON<ChannelAudit>({
+      system:
+        'Você é um analista sênior de canais do YouTube. Responda APENAS com JSON válido, sem texto adicional.',
+      prompt,
+      maxTokens: 2000,
+    });
+
+    return {
+      ...object,
+      meta: {
+        provider: this.provider.name,
+        model: this.provider.defaultModel,
+        durationMs: Date.now() - startedAt,
       },
     };
   }
