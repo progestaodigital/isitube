@@ -3,7 +3,7 @@
 > Software desktop de inteligência competitiva e planejamento de conteúdo para criadores no YouTube.
 > Stack: Electron + React + TypeScript + Vite + Prisma + SQLite + Vercel AI SDK + Claude.
 
-**Status atual:** Fase 13 concluída e aprofundada (Canal próprio — OAuth, métricas, top vídeos com retenção por vídeo, fontes de tráfego, agente de auditoria enriquecido) · também: ajuste de thumbnails (Fase 12) · Base v0.7.0 · **Próxima: DataForSEO** (trocar Keywords Everywhere por dado de SEO melhor)
+**Status atual:** Fases 14-16 concluídas — **DataForSEO** (substitui Keywords Everywhere) · **Criar/Ideação + agentes de IA no card** (SEO, gancho→roteiro) · **Thumbnails em 2 campos** (brief → prompt) com conceito por IA e "Criar thumbnail" no card · **Release v0.8.0 publicada** · **Próxima:** YouTube SERP via DataForSEO (trocar o ytsr frágil) ou aprofundar os agentes (search intent, calendário)
 **Início:** Maio de 2026 · **MVP previsto:** 9-12 semanas
 
 ---
@@ -41,6 +41,9 @@ Estas regras valem em **todas as fases** e não devem ser quebradas sem decisão
 | 11 | Entitlement assinado (Ed25519) na validação de licença | ✅ feito | Verificação criptográfica do token do isipanel — gating confia só no JWT assinado quando presente; aditivo e com fallback pro JSON legado |
 | 12 | Thumbnail Studio (geração com IA) | ✅ feito | Personagens (fotos) + cenários + referência→prompt detalhado (visão) + Gemini Flash Image + custo em R$ + integração Kanban + ajuste de thumbnails (Pro-BYOK) |
 | 13 | Canal próprio (OAuth) + auditoria | ✅ feito | Meu canal: OAuth loopback + YouTube Analytics (retenção/AVD/views/inscritos/receita) + agente de auditoria com Claude (Pro-BYOK) |
+| 14 | DataForSEO (fonte de SEO real) | ✅ feito | Substitui Keywords Everywhere; volume clickstream + CPC + dificuldade real + sazonalidade + ideias de keyword (v0.8.0) |
+| 15 | Criar (Ideação) + agentes de IA no card | ✅ feito | Página Criar (8 ideias, auto-pull do canal, estilo da Biblioteca, persistência→Kanban) + SEO/gancho→roteiro no card preenchendo os campos (v0.8.0) |
+| 16 | Thumbnails — criação em 2 campos + conceito por IA | ✅ feito | Brief→prompt editável, "Criar thumbnail" no card com conceito por IA + 3 refs da Biblioteca (v0.8.0) |
 
 > Nota: as versões entre v0.4.0 e v0.6.2 (lixeira/retention, busca global, auto-update) não foram documentadas como fases neste arquivo. A Fase 11 retoma o registro a partir do trabalho de hardening de licença.
 
@@ -716,6 +719,69 @@ npm run db:migrate    # cria/aplica migrations Prisma em dev
 npm run db:studio     # abre Prisma Studio em http://localhost:5555
 npm run db:reset      # apaga DB de dev e re-aplica todas migrations
 ```
+
+---
+
+## Fase 14 — DataForSEO (fonte de SEO real) ✅
+
+**Objetivo:** Trocar o Keywords Everywhere pelo DataForSEO como fonte de volume/dificuldade e enriquecer o relatório de palavra-chave.
+
+**Entregue:**
+- `DataForSEOProvider` no slot `keywords_everywhere` (drop-in). Endpoint `keyword_overview` (Labs, com `include_clickstream_data`) com fallback pro `google_ads/search_volume`; retry sem clickstream se a conta não tem o add-on. Termo sem volume em lugar nenhum **lança erro → o score renormaliza** (não finge volume 0).
+- Credencial `dataforseo` (login+senha, encriptada via DPAPI) + `DataForSEOSection` (2 campos) + `testDataForSEO` + telemetria por provider.
+- Enriquecimento do card "Volume de busca": volume clickstream (cobertura long-tail), CPC, dificuldade real (`keyword_difficulty`), **sazonalidade** (`monthly_searches`, 12 meses) num mini-gráfico de barras com o mês de pico.
+- **Ideias de palavras-chave** relacionadas via `keyword_ideas` (on-demand, `RelatedKeywordsPanel`), com volume real e clique pra analisar.
+- Rótulos "Keywords Everywhere" → "Volume de busca" (card + barra de status).
+
+**Arquivos-chave:** `src/main/services/keywords/providers/dataforseo.ts`, `src/main/services/keywords/index.ts`, `src/main/services/credentials.ts`, `src/main/ipc/keywords.ts`, `src/renderer/src/pages/settings/DataForSEOSection.tsx`, `src/renderer/src/pages/keywords/{KeywordResultCard,RelatedKeywordsPanel,SourceStatusBar}.tsx`.
+
+**Decisões importantes:**
+- `keyword_overview` cobre muito mais keyword (clickstream + long-tail) e é mais barato que `google_ads/search_volume` (US$ 0,09/chamada) — mas o Google Ads fica de fallback pra garantir cobertura de termos comerciais.
+- `null` de volume ≠ volume 0: significa "sem dado pra esse termo" → a fonte cai como indisponível e o score usa só scraping+trends (renormaliza), em vez de derrubar a nota.
+
+**Commits:** `acbcf33`, `f19e5d0`.
+
+---
+
+## Fase 15 — Criar (Ideação) + agentes de IA no card ✅
+
+**Objetivo:** Transformar as sub-skills do claude-youtube em agentes dentro do app. Página "Criar" só com Ideação; SEO, gancho e roteiro **dentro do card**, operando no conteúdo específico e preenchendo os campos.
+
+**Entregue:**
+- **Ideação** (página Criar): 8 ideias de vídeo a partir do nicho + contexto. **Auto-pull** dos top vídeos reais do canal conectado (com retenção, via YouTube Analytics) e **títulos modelados no estilo** dos vídeos mais vistos da Biblioteca. Ideias **persistem** (`GeneratedIdea` + migração), listadas entre sessões, com apagar e **"Criar card no Kanban"** (promove com título + keyword + conceito de thumbnail).
+- **Agentes de card** (CardEditorModal): campos novos (`description`, `tags`, `chapters`, `hashtags`, `hook`, `thumbnailPrompt` + 2 migrações).
+  - **SEO/metadados:** 3 variações de título (modeladas na Biblioteca; ao escolher, vincula o vídeo como **referência de TÍTULO**), descrição, tags, capítulos, hashtags — preenche o card.
+  - **Gancho→Roteiro:** 5 ganchos (mecanismo/risco/tráfego) → escolher salva em `hook` → **"Criar roteiro"** gera o `script` partindo do gancho.
+- `card-agents` service + handlers `ai:card-seo/hooks/script/thumbnail-concept`; whitelist de `kanban:update-card` estendido pros campos novos.
+- Prompts: `video-ideas.md`, `video-seo.md`, `video-hooks.md`, `video-script.md`, `thumbnail-concept.md`.
+
+**Arquivos-chave:** `src/main/services/{ideas,card-agents}/index.ts`, `src/main/services/ai/AIService.ts`, `src/renderer/src/pages/CriarPage.tsx` + `criar/IdeateTool.tsx`, `src/renderer/src/pages/kanban/{CardEditorModal,CardSeoSection,CardScriptSection}.tsx`, `prompts/*`.
+
+**Decisões importantes:**
+- "Criar" fica só com Ideação; os demais agentes moram no card porque agem sobre um conteúdo específico e devem **preencher os campos** do card.
+- Gancho é a etapa 1 do roteiro (escolher um gancho libera "Criar roteiro").
+- Todos os agentes puxam o canal conectado automaticamente; a referência de título sai da Biblioteca.
+
+**Commits:** `2ae9d39`, `9c003dd`.
+
+---
+
+## Fase 16 — Thumbnails: criação em 2 campos + conceito por IA ✅
+
+**Objetivo:** Separar o brief do prompt na criação de thumbnail e ligar o card ao criador.
+
+**Entregue:**
+- **Criação em 2 campos:** campo 1 = brief (o que o usuário quer, **preservado**) → **"Gerar prompt"** (lê a referência de estilo via visão do Gemini, ou expande só o texto via novo `buildPromptFromText`) → campo 2 = prompt completo **editável** → **"Gerar thumbnail"**.
+- **Botão "Criar thumbnail" no card:** leva ao criador com o brief pré-preenchido (conceito salvo no card ou **gerado na hora** pelo agente `generateThumbnailConcept`) e **pré-seleciona 3 thumbnails** mais vistas da Biblioteca como referência de estilo.
+- **Dedup das referências:** guard contra o double-fire do StrictMode, dedup por `youtubeId` e auto-limpeza de assets de estilo duplicados (`dedupeStyleAssetsBySource`).
+
+**Arquivos-chave:** `src/main/services/thumbnails/index.ts` + `providers/{gemini,mock,types}.ts`, `src/main/ipc/thumbnails.ts`, `src/renderer/src/pages/ThumbnailsPage.tsx`, `src/renderer/src/pages/kanban/CardEditorModal.tsx`, `src/renderer/src/stores/router.ts`.
+
+**Decisões importantes:**
+- O campo 1 recebe um **conceito** (brief), não um prompt técnico — o "Gerar prompt" é que produz o prompt final. Card sem conceito salvo gera um na hora com IA.
+- Referência de estilo só entra no gerador como texto (via prompt) — a pessoa da referência nunca vaza pra imagem (mantém o padrão da Fase 12).
+
+**Commit:** `fdc8c08` · **Release:** v0.8.0.
 
 ---
 
