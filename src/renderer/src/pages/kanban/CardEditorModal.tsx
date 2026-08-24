@@ -21,6 +21,8 @@ import { useRouterStore } from '../../stores/router';
 import { useVideoDetailStore } from '../../stores/videoDetail';
 import { cn } from '../../lib/cn';
 import { ReferencePickerModal } from './ReferencePickerModal';
+import { CardSeoSection } from './CardSeoSection';
+import { CardScriptSection } from './CardScriptSection';
 import type { KanbanCard, KanbanReferenceType, ThumbnailGeneration } from '@shared/types';
 
 interface CardEditorModalProps {
@@ -39,7 +41,6 @@ export function CardEditorModal({ card, onClose, onChanged }: CardEditorModalPro
   const [mainKeyword, setMainKeyword] = useState('');
   const [secondaryInput, setSecondaryInput] = useState('');
   const [secondaryKeywords, setSecondaryKeywords] = useState<string[]>([]);
-  const [script, setScript] = useState('');
   const [refPickerOpen, setRefPickerOpen] = useState(false);
   const [studioOpen, setStudioOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -50,7 +51,6 @@ export function CardEditorModal({ card, onClose, onChanged }: CardEditorModalPro
     setTitle(card.title);
     setMainKeyword(card.mainKeyword ?? '');
     setSecondaryKeywords(card.secondaryKeywords);
-    setScript(card.script ?? '');
     setSecondaryInput('');
   }, [card?.id, card?.updatedAt]);
 
@@ -307,20 +307,14 @@ export function CardEditorModal({ card, onClose, onChanged }: CardEditorModalPro
             </div>
           </Section>
 
-          {/* Roteiro */}
-          <Section icon={FileText} title="Roteiro">
-            <textarea
-              value={script}
-              onChange={(e) => setScript(e.target.value)}
-              onBlur={() => {
-                if ((script || null) !== (card.script || null)) {
-                  persistField({ script: script || null });
-                }
-              }}
-              rows={8}
-              placeholder="Hook, lista de bullets, blocos do vídeo..."
-              className="w-full rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm leading-relaxed dark:border-zinc-700 dark:bg-zinc-900"
-            />
+          {/* SEO / metadados (agente de IA) */}
+          <Section icon={Search} title="SEO / metadados">
+            <CardSeoSection card={card} onChanged={onChanged} />
+          </Section>
+
+          {/* Gancho e roteiro (agente de IA) */}
+          <Section icon={FileText} title="Gancho e roteiro">
+            <CardScriptSection card={card} onChanged={onChanged} />
           </Section>
 
           {/* Thumbnails */}

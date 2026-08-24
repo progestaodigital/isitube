@@ -83,11 +83,35 @@ export function registerKanbanHandlers(): void {
       if (o.script === null || typeof o.script === 'string') {
         p.script = o.script as string | null;
       }
+      if (o.description === null || typeof o.description === 'string') {
+        p.description = o.description as string | null;
+      }
+      if (o.hook === null || typeof o.hook === 'string') {
+        p.hook = o.hook as string | null;
+      }
       if (
         Array.isArray(o.secondaryKeywords) &&
         o.secondaryKeywords.every((k) => typeof k === 'string')
       ) {
         p.secondaryKeywords = o.secondaryKeywords as string[];
+      }
+      if (Array.isArray(o.tags) && o.tags.every((k) => typeof k === 'string')) {
+        p.tags = o.tags as string[];
+      }
+      if (Array.isArray(o.hashtags) && o.hashtags.every((k) => typeof k === 'string')) {
+        p.hashtags = o.hashtags as string[];
+      }
+      if (
+        Array.isArray(o.chapters) &&
+        o.chapters.every(
+          (c) =>
+            c &&
+            typeof c === 'object' &&
+            typeof (c as Record<string, unknown>).timestamp === 'string' &&
+            typeof (c as Record<string, unknown>).label === 'string'
+        )
+      ) {
+        p.chapters = o.chapters as KanbanCardPatch['chapters'];
       }
     }
     return updateCard(cardId, p);

@@ -155,6 +155,75 @@ export type IdeasGenerateResult = {
   meta: AIRunMeta;
 };
 
+// --- Agentes de card: SEO/metadados, ganchos, roteiro ---
+
+export type SeoTitleVariant = {
+  label: string; // "Busca" | "Navegação" | "Híbrido"
+  title: string;
+  rationale: string;
+  referenceTitle: string; // título da Biblioteca que inspirou o estilo (ou "")
+  referenceVideoId: string | null; // preenchido pelo service (match por título)
+};
+
+export type CardSeoResult = {
+  titleVariants: SeoTitleVariant[];
+  recommendedTitle: string;
+  description: string;
+  tags: string[];
+  chapters: VideoChapter[];
+  hashtags: string[];
+  meta: AIRunMeta;
+};
+
+/** Resposta do IPC de SEO: o resultado + o card já atualizado (campos preenchidos). */
+export type CardSeoResponse = {
+  seo: CardSeoResult;
+  card: KanbanCard;
+};
+
+export type HookVariant = {
+  style: string;
+  mechanism: string;
+  script: string;
+  dropOffRisk: 'baixo' | 'medio' | 'alto';
+  trafficSource: string; // "Navegação" | "Busca" | "Sugeridos"
+  bestWhen: string;
+};
+
+export type CardHooksResult = {
+  variants: HookVariant[];
+  recommendation: string;
+  meta: AIRunMeta;
+};
+
+export type CardScriptResult = {
+  script: string;
+  meta: AIRunMeta;
+};
+
+// Inputs internos (montados pelo service a partir do card + canal).
+export type CardSeoInput = {
+  title: string;
+  keyword: string;
+  niche: string;
+  contentSummary: string;
+  secondaryKeywords: string[];
+};
+
+export type CardHooksInput = {
+  title: string;
+  keyword: string;
+  niche: string;
+};
+
+export type CardScriptInput = {
+  title: string;
+  hook: string;
+  keyword: string;
+  niche: string;
+  targetLengthMin: number;
+};
+
 export type TrendsTimeSeriesPoint = {
   date: string;
   value: number;
@@ -425,6 +494,11 @@ export type KanbanCardKeywordAnalysis = {
   term: string;
 };
 
+export type VideoChapter = {
+  timestamp: string; // "00:00"
+  label: string;
+};
+
 export type KanbanCard = {
   id: string;
   columnId: string;
@@ -434,6 +508,12 @@ export type KanbanCard = {
   /** Lookup automático: presente quando há análise cacheada pro mainKeyword. */
   keywordAnalysis: KanbanCardKeywordAnalysis | null;
   secondaryKeywords: string[];
+  // Campos preenchidos pelos agentes de IA do card.
+  description: string | null;
+  tags: string[];
+  chapters: VideoChapter[];
+  hashtags: string[];
+  hook: string | null;
   script: string | null;
   thumbnails: KanbanCardThumbnail[];
   references: KanbanCardReference[];
@@ -459,6 +539,11 @@ export type KanbanCardPatch = {
   title?: string;
   mainKeyword?: string | null;
   secondaryKeywords?: string[];
+  description?: string | null;
+  tags?: string[];
+  chapters?: VideoChapter[];
+  hashtags?: string[];
+  hook?: string | null;
   script?: string | null;
 };
 
@@ -1045,6 +1130,9 @@ export type IsitubeAPI = {
   };
   ai: {
     generateKeywordIdeas: (seed: string) => Promise<KeywordIdeasResult>;
+    generateCardSeo: (cardId: string) => Promise<CardSeoResponse>;
+    generateCardHooks: (cardId: string) => Promise<CardHooksResult>;
+    generateCardScript: (cardId: string, targetLengthMin: number) => Promise<KanbanCard>;
   };
   ideas: {
     generate: (input: IdeateInput) => Promise<IdeasGenerateResult>;

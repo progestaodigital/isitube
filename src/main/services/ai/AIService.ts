@@ -2,10 +2,19 @@ import type {
   ChannelAudit,
   ChannelAuditInput,
   ChannelAuditResult,
+  CardSeoInput,
+  CardSeoResult,
+  CardHooksInput,
+  CardHooksResult,
+  CardScriptInput,
+  CardScriptResult,
+  HookVariant,
   IdeateInput,
   IdeateResult,
   KeywordIdea,
   KeywordIdeasResult,
+  SeoTitleVariant,
+  VideoChapter,
   VideoIdea,
 } from '@shared/types';
 import type { AIProvider } from './providers/types';
@@ -72,6 +81,107 @@ export class AIService {
 
     return {
       ideas: object.ideas,
+      meta: {
+        provider: this.provider.name,
+        model: this.provider.defaultModel,
+        durationMs: Date.now() - startedAt,
+      },
+    };
+  }
+
+  /**
+   * SEO/metadados de um vídeo específico: 3 variações de título, descrição,
+   * tags, capítulos e hashtags — ancorados no conteúdo do card.
+   */
+  async generateSeo(input: CardSeoInput, styleTitles: string[] = []): Promise<CardSeoResult> {
+    const styleReference =
+      styleTitles.length > 0
+        ? `\nTÍTULOS DE REFERÊNCIA (da Biblioteca do criador — modele o estilo por eles e informe o referenceTitle usado):\n${styleTitles.map((t) => `- ${t}`).join('\n')}\n`
+        : '';
+    const prompt = await loadPrompt('video-seo', {
+      data: JSON.stringify(input, null, 2),
+      styleReference,
+    });
+    const startedAt = Date.now();
+
+    const { object } = await this.provider.generateJSON<{
+      titleVariants: Array<{ label: string; title: string; rationale: string; referenceTitle?: string }>;
+      recommendedTitle: string;
+      description: string;
+      tags: string[];
+      chapters: VideoChapter[];
+      hashtags: string[];
+    }>({
+      system:
+        'Você é um especialista em SEO para YouTube. Responda APENAS com JSON válido, sem texto adicional.',
+      prompt,
+      maxTokens: 4000,
+    });
+
+    const titleVariants: SeoTitleVariant[] = object.titleVariants.map((v) => ({
+      label: v.label,
+      title: v.title,
+      rationale: v.rationale,
+      referenceTitle: v.referenceTitle ?? '',
+      referenceVideoId: null, // o service de card preenche via match por título
+    }));
+
+    return {
+      ...object,
+      titleVariants,
+      meta: {
+        provider: this.provider.name,
+        model: this.provider.defaultModel,
+        durationMs: Date.now() - startedAt,
+      },
+    };
+  }
+
+  /**
+   * 5 variações de gancho (primeiros 30s), cada uma com mecanismo psicológico
+   * distinto, risco de desistência e fonte de tráfego ideal.
+   */
+  async generateHooks(input: CardHooksInput): Promise<CardHooksResult> {
+    const prompt = await loadPrompt('video-hooks', { data: JSON.stringify(input, null, 2) });
+    const startedAt = Date.now();
+
+    const { object } = await this.provider.generateJSON<{
+      variants: HookVariant[];
+      recommendation: string;
+    }>({
+      system:
+        'Você é um roteirista especialista em ganchos de YouTube. Responda APENAS com JSON válido, sem texto adicional.',
+      prompt,
+      maxTokens: 4000,
+    });
+
+    return {
+      ...object,
+      meta: {
+        provider: this.provider.name,
+        model: this.provider.defaultModel,
+        durationMs: Date.now() - startedAt,
+      },
+    };
+  }
+
+  /**
+   * Roteiro completo (Markdown) engenheirado pra retenção, partindo do gancho
+   * já escolhido. Texto livre — usa generateText (não JSON) pra não truncar.
+   */
+  async generateScript(input: CardScriptInput): Promise<CardScriptResult> {
+    const prompt = await loadPrompt('video-script', { data: JSON.stringify(input, null, 2) });
+    const startedAt = Date.now();
+
+    const { text } = await this.provider.generateText({
+      system:
+        'Você é um roteirista de YouTube especialista em retenção. Escreva o roteiro em Markdown, sem cercas de código.',
+      prompt,
+      maxTokens: 6000,
+    });
+
+    return {
+      script: text.trim(),
       meta: {
         provider: this.provider.name,
         model: this.provider.defaultModel,

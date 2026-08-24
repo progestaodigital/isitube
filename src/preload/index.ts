@@ -1,6 +1,8 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import type {
   AddChannelResult,
+  CardHooksResult,
+  CardSeoResponse,
   CategoryActionResult,
   CategoryInfo,
   ChannelInfo,
@@ -100,6 +102,12 @@ const api: IsitubeAPI = {
   ai: {
     generateKeywordIdeas: (seed: string): Promise<KeywordIdeasResult> =>
       ipcRenderer.invoke('ai:generate-keyword-ideas', seed),
+    generateCardSeo: (cardId: string): Promise<CardSeoResponse> =>
+      ipcRenderer.invoke('ai:card-seo', cardId),
+    generateCardHooks: (cardId: string): Promise<CardHooksResult> =>
+      ipcRenderer.invoke('ai:card-hooks', cardId),
+    generateCardScript: (cardId: string, targetLengthMin: number): Promise<KanbanCard> =>
+      ipcRenderer.invoke('ai:card-script', cardId, targetLengthMin),
   },
   ideas: {
     generate: (input: IdeateInput): Promise<IdeasGenerateResult> =>

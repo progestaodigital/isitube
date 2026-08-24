@@ -361,6 +361,12 @@ model KanbanCard {
   linkedKeywordId   String?      @map("linked_keyword_id")
   linkedKeyword     Keyword?     @relation(fields: [linkedKeywordId], references: [id], onDelete: SetNull)
   secondaryKeywords String?      @map("secondary_keywords") // JSON array of strings
+  // Campos preenchidos pelos agentes de IA do card (SEO/metadados e roteiro).
+  description       String?      // descrição do vídeo (agente SEO)
+  tags              String?      // JSON array de strings (agente SEO)
+  chapters          String?      // JSON array de { timestamp, label } (agente SEO)
+  hashtags          String?      // JSON array de strings (agente SEO)
+  hook              String?      // gancho escolhido — parte 1 do roteiro
   script            String?
 
   thumbnails KanbanCardThumbnail[]

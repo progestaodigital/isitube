@@ -12,6 +12,7 @@ import type {
   KanbanReferenceType,
   KanbanThumbnailUpload,
   ThumbnailExportResult,
+  VideoChapter,
 } from '@shared/types';
 
 const VALID_REF_TYPES: KanbanReferenceType[] = ['thumb', 'titulo', 'roteiro'];
@@ -184,6 +185,16 @@ export async function reorderColumns(columnIds: string[]): Promise<void> {
 // Card CRUD
 // =============================================================================
 
+export async function getCard(cardId: string): Promise<KanbanCard | null> {
+  const prisma = getPrisma();
+  const card = await prisma.kanbanCard.findFirst({
+    where: { id: cardId, deletedAt: null },
+    include: cardInclude(),
+  });
+  if (!card) return null;
+  return projectCard(card, new Map());
+}
+
 export async function createCard(columnId: string, title = ''): Promise<KanbanCard> {
   const prisma = getPrisma();
   const max = await prisma.kanbanCard.aggregate({
@@ -206,9 +217,14 @@ export async function updateCard(
   const data: Record<string, unknown> = {};
   if (patch.title !== undefined) data.title = patch.title;
   if (patch.script !== undefined) data.script = patch.script;
+  if (patch.description !== undefined) data.description = patch.description;
+  if (patch.hook !== undefined) data.hook = patch.hook;
   if (patch.secondaryKeywords !== undefined) {
     data.secondaryKeywords = JSON.stringify(patch.secondaryKeywords);
   }
+  if (patch.tags !== undefined) data.tags = JSON.stringify(patch.tags);
+  if (patch.hashtags !== undefined) data.hashtags = JSON.stringify(patch.hashtags);
+  if (patch.chapters !== undefined) data.chapters = JSON.stringify(patch.chapters);
   if (patch.mainKeyword !== undefined) {
     data.mainKeyword = patch.mainKeyword;
     // Atualiza o linkedKeywordId pra refletir o estado atual:
@@ -514,6 +530,11 @@ type DbCard = {
   mainKeyword: string | null;
   linkedKeywordId: string | null;
   secondaryKeywords: string | null;
+  description: string | null;
+  tags: string | null;
+  chapters: string | null;
+  hashtags: string | null;
+  hook: string | null;
   script: string | null;
   createdAt: Date;
   updatedAt: Date;
@@ -613,6 +634,11 @@ function projectCard(
     mainKeyword: c.mainKeyword,
     keywordAnalysis,
     secondaryKeywords,
+    description: c.description,
+    tags: parseStringArray(c.tags),
+    chapters: parseChapters(c.chapters),
+    hashtags: parseStringArray(c.hashtags),
+    hook: c.hook,
     script: c.script,
     thumbnails,
     references,
@@ -620,6 +646,29 @@ function projectCard(
     createdAt: c.createdAt.toISOString(),
     updatedAt: c.updatedAt.toISOString(),
   };
+}
+
+function parseStringArray(json: string | null): string[] {
+  if (!json) return [];
+  try {
+    const parsed = JSON.parse(json);
+    return Array.isArray(parsed) ? parsed.filter((s): s is string => typeof s === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
+function parseChapters(json: string | null): VideoChapter[] {
+  if (!json) return [];
+  try {
+    const parsed = JSON.parse(json);
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .filter((c) => c && typeof c.timestamp === 'string' && typeof c.label === 'string')
+      .map((c) => ({ timestamp: c.timestamp, label: c.label }));
+  } catch {
+    return [];
+  }
 }
 
 function bufferToDataUrl(data: Buffer | Uint8Array, mimeType: string): string {
