@@ -5,6 +5,7 @@ import { disconnectPrisma, getPrisma } from './db';
 import { ensureMigrationsApplied } from './db/migrations';
 import { scheduleNextTimer } from './services/channels/scheduler';
 import { startScheduler } from './services/schedules';
+import { initBridge, stopBridge } from './services/bridge';
 import { purgeExpiredDeletedVideos } from './services/videos';
 
 const isDev = !app.isPackaged;
@@ -85,6 +86,10 @@ app.whenReady().then(async () => {
   // modal pergunta "Rodar agora ou Adiar".
   startScheduler();
 
+  // Bridge local (MCP do Claude Code): sobe se o usuário habilitou nas
+  // configurações. Só escuta em 127.0.0.1 e exige bearer token.
+  initBridge();
+
   // Lixeira: purge silencioso de vídeos soft-deleted há mais de 30d.
   // Roda no boot e a cada 12h enquanto o app fica aberto. Erros são
   // logados mas não interrompem o boot.
@@ -105,6 +110,7 @@ app.whenReady().then(async () => {
 });
 
 app.on('window-all-closed', async () => {
+  await stopBridge();
   await disconnectPrisma();
   if (process.platform !== 'darwin') app.quit();
 });

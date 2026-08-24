@@ -9,6 +9,7 @@ import { KeywordSourcesSection } from './settings/KeywordSourcesSection';
 import { ChannelsSection } from './settings/ChannelsSection';
 import { LicenseSection } from './settings/LicenseSection';
 import { HealthSection } from './settings/HealthSection';
+import { BridgeSection } from './settings/BridgeSection';
 import { GeneralSection } from './settings/GeneralSection';
 import { DataSection } from './settings/DataSection';
 import { BackupSection } from './settings/BackupSection';
@@ -54,6 +55,7 @@ export function SettingsPage() {
       <GeneralSection />
       <BackupSection />
       <SchedulesSection />
+      <BridgeSection />
       <HealthSection />
       <DataSection />
 

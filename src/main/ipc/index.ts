@@ -20,6 +20,7 @@ import { registerUpdatesHandlers } from './updates';
 import { registerQuotaHandlers } from './quota';
 import { registerHealthHandlers } from './health';
 import { registerScheduleIpc } from './schedules';
+import { registerBridgeHandlers } from './bridge';
 
 export function registerIpcHandlers(): void {
   registerSettingsHandlers();
@@ -44,4 +45,5 @@ export function registerIpcHandlers(): void {
   registerQuotaHandlers();
   registerHealthHandlers();
   registerScheduleIpc();
+  registerBridgeHandlers();
 }

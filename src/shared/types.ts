@@ -1114,6 +1114,15 @@ export type ChannelAuditInput = {
   trafficSources: YoutubeTrafficSource[];
 };
 
+// Bridge HTTP local (integração MCP com o Claude Code).
+export type BridgeStatus = {
+  enabled: boolean;
+  running: boolean;
+  host: string;
+  port: number;
+  token: string;
+};
+
 // =============================================================================
 // IPC bridge contract
 // =============================================================================
@@ -1277,6 +1286,11 @@ export type IsitubeAPI = {
   health: {
     /** Snapshot in-memory dos providers externos desde o boot. */
     list: () => Promise<ProviderSnapshot[]>;
+  };
+  bridge: {
+    status: () => Promise<BridgeStatus>;
+    setEnabled: (enabled: boolean) => Promise<BridgeStatus>;
+    regenerateToken: () => Promise<BridgeStatus>;
   };
   schedules: {
     list: () => Promise<ScheduleConfig[]>;

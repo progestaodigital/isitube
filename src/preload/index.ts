@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import type {
   AddChannelResult,
+  BridgeStatus,
   CardHooksResult,
   CardSeoResponse,
   CategoryActionResult,
@@ -99,6 +100,13 @@ const api: IsitubeAPI = {
     test: (provider) => ipcRenderer.invoke('credentials:test', provider),
   },
 
+  bridge: {
+    status: (): Promise<BridgeStatus> => ipcRenderer.invoke('bridge:status'),
+    setEnabled: (enabled: boolean): Promise<BridgeStatus> =>
+      ipcRenderer.invoke('bridge:set-enabled', enabled),
+    regenerateToken: (): Promise<BridgeStatus> =>
+      ipcRenderer.invoke('bridge:regenerate-token'),
+  },
   ai: {
     generateKeywordIdeas: (seed: string): Promise<KeywordIdeasResult> =>
       ipcRenderer.invoke('ai:generate-keyword-ideas', seed),
