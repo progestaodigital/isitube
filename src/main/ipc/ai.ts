@@ -4,6 +4,7 @@ import {
   generateCardHooks,
   generateCardScript,
   generateCardSeo,
+  generateCardThumbnailConcept,
 } from '../services/card-agents';
 
 const NO_SERVICE_MSG =
@@ -39,5 +40,10 @@ export function registerAIHandlers(): void {
     assertCardId(cardId);
     const length = typeof targetLengthMin === 'number' ? targetLengthMin : 8;
     return generateCardScript(cardId, length);
+  });
+
+  ipcMain.handle('ai:card-thumbnail-concept', async (_event, cardId: unknown) => {
+    assertCardId(cardId);
+    return generateCardThumbnailConcept(cardId);
   });
 }

@@ -50,6 +50,13 @@ export interface ImageProvider {
   ): Promise<string>;
 
   /**
+   * Igual ao buildDetailedPrompt, mas SEM imagem de referência: expande o que o
+   * criador quer (texto) num prompt final detalhado e estruturado. Usado quando
+   * o usuário não selecionou referência de estilo.
+   */
+  buildPromptFromText(brief: string, options?: { hasScene?: boolean }): Promise<string>;
+
+  /**
    * Edita uma thumbnail já existente aplicando um ajuste em texto (ex: "muda o
    * texto", "escurece o fundo"), preservando o resto. `identityRefs` (fotos do
    * personagem) mantêm o rosto fiel durante a edição.

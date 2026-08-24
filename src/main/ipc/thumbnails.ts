@@ -5,6 +5,7 @@ import {
   addCharacterPhotos,
   adjustGeneration,
   buildPromptFromReference,
+  buildPromptFromText,
   createCharacter,
   createScene,
   deleteAsset,
@@ -19,6 +20,7 @@ import {
   listGenerations,
   listScenes,
   pickAutoStyleRef,
+  pickTopStyleRefs,
   removeCharacterPhoto,
   renameCharacter,
   renameScene,
@@ -79,6 +81,10 @@ export function registerThumbnailsHandlers(): void {
   );
 
   ipcMain.handle('thumbnails:pick-auto-ref', async () => pickAutoStyleRef());
+
+  ipcMain.handle('thumbnails:pick-top-refs', async (_e, limit: unknown) =>
+    pickTopStyleRefs(typeof limit === 'number' ? limit : 3)
+  );
 
   ipcMain.handle('thumbnails:delete-asset', async (_e, id: unknown) => {
     if (typeof id !== 'string') throw new Error('thumbnails:delete-asset expects a string id');
@@ -183,14 +189,13 @@ export function registerThumbnailsHandlers(): void {
   ipcMain.handle(
     'thumbnails:build-prompt',
     async (_e, styleAssetId: unknown, instructions: unknown, hasScene: unknown) => {
-      if (typeof styleAssetId !== 'string') {
-        throw new Error('thumbnails:build-prompt expects a style asset id');
+      const brief = typeof instructions === 'string' ? instructions : '';
+      const scene = hasScene === true;
+      // Com referência → lê a imagem; sem referência → expande só o texto.
+      if (typeof styleAssetId === 'string' && styleAssetId) {
+        return buildPromptFromReference(styleAssetId, brief, scene);
       }
-      return buildPromptFromReference(
-        styleAssetId,
-        typeof instructions === 'string' ? instructions : '',
-        hasScene === true
-      );
+      return buildPromptFromText(brief, scene);
     }
   );
 

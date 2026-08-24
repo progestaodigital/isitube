@@ -135,5 +135,9 @@ export async function createCardFromIdea(id: string): Promise<KanbanCard> {
   }
 
   const card = await createCard(columnId, idea.title);
-  return updateCard(card.id, { mainKeyword: idea.keyword });
+  return updateCard(card.id, {
+    mainKeyword: idea.keyword,
+    // Leva o conceito de thumbnail da ideia pro card (vira o brief no criador).
+    thumbnailPrompt: idea.thumbnailConcept || null,
+  });
 }

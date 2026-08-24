@@ -52,6 +52,8 @@ function formatBrl(value: number): string {
 export function ThumbnailsPage() {
   const showToast = useToastStore((s) => s.show);
   const navigate = useRouterStore((s) => s.navigate);
+  const pendingThumbnail = useRouterStore((s) => s.pendingThumbnail);
+  const consumePendingThumbnail = useRouterStore((s) => s.consumePendingThumbnail);
 
   const [status, setStatus] = useState<ThumbnailStudioStatus | null>(null);
   const [characters, setCharacters] = useState<ThumbnailCharacter[]>([]);
@@ -63,7 +65,10 @@ export function ThumbnailsPage() {
   const [characterId, setCharacterId] = useState('');
   const [useScene, setUseScene] = useState(false);
   const [sceneId, setSceneId] = useState('');
-  const [prompt, setPrompt] = useState('');
+  // Brief = o que o usuário escreve (preservado). fullPrompt = prompt detalhado
+  // gerado, editável, que vai pro gerador.
+  const [brief, setBrief] = useState('');
+  const [fullPrompt, setFullPrompt] = useState('');
   const [count, setCount] = useState(1);
   const [generating, setGenerating] = useState(false);
   const [buildingPrompt, setBuildingPrompt] = useState(false);
@@ -107,6 +112,35 @@ export function ThumbnailsPage() {
   useEffect(() => {
     window.api.thumbnails.usdBrlRate().then(setUsdBrl).catch(() => {});
   }, []);
+
+  // Deep-link do card ("Criar thumbnail"): preenche o brief e pré-seleciona N
+  // thumbnails da Biblioteca como referência de estilo. O ref evita rodar duas
+  // vezes com o mesmo payload (StrictMode dispara o efeito 2x em dev, o que
+  // criava referências duplicadas).
+  const handledPendingRef = useRef<unknown>(null);
+  useEffect(() => {
+    if (!pendingThumbnail || handledPendingRef.current === pendingThumbnail) return;
+    handledPendingRef.current = pendingThumbnail;
+    const { brief: pBrief, preselectStyleRefs } = pendingThumbnail;
+    consumePendingThumbnail();
+    setBrief(pBrief);
+    if (preselectStyleRefs > 0) {
+      window.api.thumbnails
+        .pickTopStyleRefs(preselectStyleRefs)
+        .then(async (assets) => {
+          await refreshAll();
+          if (assets.length > 0) {
+            setSelectedStyleIds((prev) => {
+              const next = new Set(prev);
+              assets.forEach((a) => next.add(a.id));
+              return next;
+            });
+          }
+        })
+        .catch(() => {});
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingThumbnail]);
 
   const selectedStyleCount = selectedStyleIds.size;
   const selectedStyleAssets = styleAssets.filter((a) => selectedStyleIds.has(a.id));
@@ -278,26 +312,24 @@ export function ThumbnailsPage() {
 
   // ---- Geração ----
   async function handleBuildPrompt() {
-    if (selectedStyleAssets.length === 0) {
-      showToast({ kind: 'info', title: 'Selecione uma referência de estilo primeiro' });
-      return;
-    }
     setBuildingPrompt(true);
     try {
+      // Com referência selecionada → lê a imagem; sem → expande só o brief.
+      const styleAssetId = selectedStyleAssets[0]?.id ?? null;
       const detailed = await window.api.thumbnails.buildPrompt(
-        selectedStyleAssets[0].id,
-        prompt,
+        styleAssetId,
+        brief,
         useScene && !!sceneId
       );
       if (detailed?.trim()) {
-        setPrompt(detailed.trim());
+        setFullPrompt(detailed.trim());
         showToast({
           kind: 'success',
-          title: 'Prompt gerado a partir da referência',
-          description: 'Revise/ajuste o texto e clique em Gerar.',
+          title: styleAssetId ? 'Prompt gerado a partir da referência' : 'Prompt gerado',
+          description: 'Revise/ajuste o prompt completo abaixo e clique em Gerar thumbnail.',
         });
       } else {
-        showToast({ kind: 'error', title: 'Não consegui gerar o prompt a partir da referência' });
+        showToast({ kind: 'error', title: 'Não consegui gerar o prompt' });
       }
     } catch (err) {
       showToast({
@@ -311,14 +343,15 @@ export function ThumbnailsPage() {
   }
 
   async function handleGenerate() {
-    if (!prompt.trim()) {
-      showToast({ kind: 'info', title: 'Escreva um prompt' });
+    const finalPrompt = fullPrompt.trim() || brief.trim();
+    if (!finalPrompt) {
+      showToast({ kind: 'info', title: 'Escreva o que você quer (ou gere o prompt)' });
       return;
     }
     setGenerating(true);
     try {
       const res = await window.api.thumbnails.generate({
-        prompt,
+        prompt: finalPrompt,
         characterId: characterId || null,
         sceneId: useScene && sceneId ? sceneId : null,
         styleAssetIds: Array.from(selectedStyleIds),
@@ -587,14 +620,19 @@ export function ThumbnailsPage() {
           </div>
         </div>
 
-        {selectedStyleCount > 0 && (
-          <div className="mt-4 flex flex-wrap items-center gap-2 rounded-lg border border-violet-200 bg-violet-50 p-2.5 dark:border-violet-900 dark:bg-violet-950/30">
-            <Sparkles className="h-4 w-4 shrink-0 text-violet-600 dark:text-violet-300" />
-            <span className="flex-1 text-xs text-violet-900 dark:text-violet-200">
-              Escreva sua alteração no campo abaixo (ex.: texto, expressão, "sem logo") e clique — a
-              IA lê a referência e escreve um <b>prompt detalhado</b> no campo. Depois é só revisar e
-              gerar.
-            </span>
+        {/* 1. O que você quer (brief) — preservado */}
+        <div className="mt-4">
+          <label className="mb-1 block text-xs font-medium text-zinc-700 dark:text-zinc-300">
+            1. O que você quer na thumbnail?
+          </label>
+          <textarea
+            value={brief}
+            onChange={(e) => setBrief(e.target.value)}
+            rows={3}
+            placeholder={'Ex: texto "QUASE ME QUEBROU", expressão preocupada, segurando dinheiro.'}
+            className="w-full resize-y rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900"
+          />
+          <div className="mt-2 flex flex-wrap items-center gap-2">
             <Button
               onClick={handleBuildPrompt}
               disabled={buildingPrompt || !canGenerate}
@@ -606,21 +644,29 @@ export function ThumbnailsPage() {
               ) : (
                 <Sparkles className="h-4 w-4" />
               )}
-              {buildingPrompt ? 'Lendo referência…' : 'Gerar prompt da referência'}
+              {buildingPrompt ? 'Gerando prompt…' : 'Gerar prompt'}
             </Button>
+            <span className="text-[11px] text-zinc-500">
+              {selectedStyleCount > 0
+                ? 'A IA lê a referência de estilo + seu texto e escreve o prompt completo abaixo.'
+                : 'A IA expande seu texto num prompt completo (selecione uma referência de estilo pra guiar o visual).'}
+            </span>
           </div>
-        )}
+        </div>
 
-        <textarea
-          value={prompt}
-          onChange={(e) => setPrompt(e.target.value)}
-          rows={4}
-          placeholder={
-            'Descreva a thumbnail (ou sua alteração, se for usar "Gerar prompt da referência"). ' +
-            'Ex: texto "QUASE ME QUEBROU", expressão preocupada, segurando dinheiro.'
-          }
-          className="mt-4 w-full resize-y rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900"
-        />
+        {/* 2. Prompt completo (editável) */}
+        <div className="mt-4">
+          <label className="mb-1 block text-xs font-medium text-zinc-700 dark:text-zinc-300">
+            2. Prompt completo (editável)
+          </label>
+          <textarea
+            value={fullPrompt}
+            onChange={(e) => setFullPrompt(e.target.value)}
+            rows={7}
+            placeholder="Clique em “Gerar prompt” pra preencher aqui — ou escreva/cole o prompt final direto."
+            className="w-full resize-y rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm leading-relaxed dark:border-zinc-700 dark:bg-zinc-900"
+          />
+        </div>
 
         <div className="mt-3 flex flex-wrap items-center gap-3">
           <label className="flex items-center gap-2 text-xs text-zinc-600 dark:text-zinc-400">
@@ -650,7 +696,7 @@ export function ThumbnailsPage() {
           <div className="ml-auto">
             <Button
               onClick={handleGenerate}
-              disabled={generating || !canGenerate || !prompt.trim()}
+              disabled={generating || !canGenerate || !(fullPrompt.trim() || brief.trim())}
               variant="primary"
             >
               {generating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}

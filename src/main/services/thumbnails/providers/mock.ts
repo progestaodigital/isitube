@@ -73,6 +73,20 @@ export class MockImageProvider implements ImageProvider {
       extra
     );
   }
+
+  async buildPromptFromText(brief: string, _options?: { hasScene?: boolean }): Promise<string> {
+    const extra = brief?.trim() ? `\n\nO que o criador quer: ${brief.trim()}` : '';
+    return (
+      'Thumbnail de YouTube 16:9, alto contraste, alto CTR.\n' +
+      'PESSOA: use a foto de referência da pessoa fornecida, preservando a identidade real; uma ' +
+      'única pessoa, no terço direito, do peito para cima, expressão marcante.\n' +
+      'PRIMEIRO PLANO: um elemento de destaque relacionado ao tema, projetado à câmera.\n' +
+      'TEXTO: 2-4 palavras grandes, maiúsculas, cor viva com contorno escuro, canto superior.\n' +
+      'FUNDO: ambiente desfocado coerente com o tema, luz de recorte atrás da cabeça.\n' +
+      'ESTILO: dramático, limpo, legível quando pequeno.' +
+      extra
+    );
+  }
 }
 
 function delay(ms: number): Promise<void> {

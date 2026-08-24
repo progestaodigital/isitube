@@ -89,6 +89,9 @@ export function registerKanbanHandlers(): void {
       if (o.hook === null || typeof o.hook === 'string') {
         p.hook = o.hook as string | null;
       }
+      if (o.thumbnailPrompt === null || typeof o.thumbnailPrompt === 'string') {
+        p.thumbnailPrompt = o.thumbnailPrompt as string | null;
+      }
       if (
         Array.isArray(o.secondaryKeywords) &&
         o.secondaryKeywords.every((k) => typeof k === 'string')

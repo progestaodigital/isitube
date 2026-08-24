@@ -318,6 +318,72 @@ export async function pickAutoStyleRef(): Promise<ThumbnailAsset | null> {
   return addAssetFromVideo(v.id, 'style');
 }
 
+/**
+ * Pega os `limit` vídeos mais vistos da BIBLIOTECA do usuário e materializa as
+ * thumbnails como referências de estilo (reusa as já materializadas). Usado pra
+ * pré-selecionar referências quando o usuário vem do card via "Criar thumbnail".
+ */
+/** Remove (soft-delete) assets de estilo duplicados que apontam pro MESMO vídeo,
+ *  mantendo o mais recente. Auto-cura duplicatas criadas por corrida. */
+async function dedupeStyleAssetsBySource(): Promise<void> {
+  const rows = await getPrisma().thumbnailAsset.findMany({
+    where: { deletedAt: null, kind: 'style', sourceVideoId: { not: null } },
+    orderBy: { createdAt: 'desc' },
+    select: { id: true, sourceVideoId: true },
+  });
+  const seen = new Set<string>();
+  const toDelete: string[] = [];
+  for (const r of rows) {
+    const key = r.sourceVideoId as string;
+    if (seen.has(key)) toDelete.push(r.id);
+    else seen.add(key);
+  }
+  if (toDelete.length > 0) {
+    await getPrisma().thumbnailAsset.updateMany({
+      where: { id: { in: toDelete } },
+      data: { deletedAt: new Date() },
+    });
+  }
+}
+
+export async function pickTopStyleRefs(limit = 3): Promise<ThumbnailAsset[]> {
+  await dedupeStyleAssetsBySource();
+  // Pega mais candidatos e deduplica por youtubeId — a Biblioteca pode ter linhas
+  // diferentes do MESMO vídeo, e não queremos a mesma thumbnail duas vezes.
+  const vids = await getPrisma().video.findMany({
+    where: {
+      deletedAt: null,
+      inLibrary: true,
+      OR: [{ thumbnailHdUrl: { not: null } }, { thumbnailUrl: { not: null } }],
+    },
+    orderBy: { viewCount: 'desc' },
+    take: limit * 5,
+  });
+
+  const seenYoutubeIds = new Set<string>();
+  const assets: ThumbnailAsset[] = [];
+  for (const v of vids) {
+    if (assets.length >= limit) break;
+    if (seenYoutubeIds.has(v.youtubeId)) continue;
+    seenYoutubeIds.add(v.youtubeId);
+
+    const existing = await getPrisma().thumbnailAsset.findFirst({
+      where: { deletedAt: null, sourceVideoId: v.id, kind: 'style' },
+      orderBy: { createdAt: 'desc' },
+    });
+    if (existing) {
+      assets.push(projectAsset(existing));
+      continue;
+    }
+    try {
+      assets.push(await addAssetFromVideo(v.id, 'style'));
+    } catch {
+      // pula vídeo com thumbnail inacessível
+    }
+  }
+  return assets;
+}
+
 export async function deleteAsset(id: string): Promise<void> {
   await getPrisma().thumbnailAsset.update({ where: { id }, data: { deletedAt: new Date() } });
 }
@@ -517,6 +583,21 @@ export async function buildPromptFromReference(
     instructions,
     { hasScene }
   );
+}
+
+/**
+ * Gera um prompt detalhado a partir SÓ do texto do criador (sem referência de
+ * estilo). Usado quando nenhuma referência foi selecionada.
+ */
+export async function buildPromptFromText(
+  brief: string,
+  hasScene: boolean
+): Promise<string> {
+  const provider = await selectImageProvider();
+  if (!provider) {
+    throw new Error('Configure sua chave do Google AI (Gemini) para gerar o prompt.');
+  }
+  return provider.buildPromptFromText(brief, { hasScene });
 }
 
 export async function generate(input: ThumbnailGenerateInput): Promise<ThumbnailGenerateResult> {

@@ -219,6 +219,7 @@ export async function updateCard(
   if (patch.script !== undefined) data.script = patch.script;
   if (patch.description !== undefined) data.description = patch.description;
   if (patch.hook !== undefined) data.hook = patch.hook;
+  if (patch.thumbnailPrompt !== undefined) data.thumbnailPrompt = patch.thumbnailPrompt;
   if (patch.secondaryKeywords !== undefined) {
     data.secondaryKeywords = JSON.stringify(patch.secondaryKeywords);
   }
@@ -535,6 +536,7 @@ type DbCard = {
   chapters: string | null;
   hashtags: string | null;
   hook: string | null;
+  thumbnailPrompt: string | null;
   script: string | null;
   createdAt: Date;
   updatedAt: Date;
@@ -639,6 +641,7 @@ function projectCard(
     chapters: parseChapters(c.chapters),
     hashtags: parseStringArray(c.hashtags),
     hook: c.hook,
+    thumbnailPrompt: c.thumbnailPrompt,
     script: c.script,
     thumbnails,
     references,

@@ -367,6 +367,7 @@ model KanbanCard {
   chapters          String?      // JSON array de { timestamp, label } (agente SEO)
   hashtags          String?      // JSON array de strings (agente SEO)
   hook              String?      // gancho escolhido — parte 1 do roteiro
+  thumbnailPrompt   String?      @map("thumbnail_prompt") // brief de thumbnail (do agente de ideação)
   script            String?
 
   thumbnails KanbanCardThumbnail[]

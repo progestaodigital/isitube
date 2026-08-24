@@ -13,6 +13,7 @@ import {
   Type,
   Download,
   Search,
+  Loader2,
 } from 'lucide-react';
 import { Modal } from '../../components/ui/Modal';
 import { Button } from '../../components/ui/Button';
@@ -34,6 +35,7 @@ interface CardEditorModalProps {
 export function CardEditorModal({ card, onClose, onChanged }: CardEditorModalProps) {
   const showToast = useToastStore((s) => s.show);
   const navigateToKeywordSearch = useRouterStore((s) => s.navigateToKeywordSearch);
+  const navigateToThumbnailCreate = useRouterStore((s) => s.navigateToThumbnailCreate);
   const openVideoDetail = useVideoDetailStore((s) => s.open);
 
   // Local draft state — só persiste no DB em onBlur ou Salvar.
@@ -43,6 +45,7 @@ export function CardEditorModal({ card, onClose, onChanged }: CardEditorModalPro
   const [secondaryKeywords, setSecondaryKeywords] = useState<string[]>([]);
   const [refPickerOpen, setRefPickerOpen] = useState(false);
   const [studioOpen, setStudioOpen] = useState(false);
+  const [creatingThumb, setCreatingThumb] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Hidrata quando o card muda (abertura ou refetch após salvar).
@@ -178,6 +181,28 @@ export function CardEditorModal({ card, onClose, onChanged }: CardEditorModalPro
         title: 'Falha ao puxar do estúdio',
         description: err instanceof Error ? err.message : String(err),
       });
+    }
+  }
+
+  async function handleCreateThumbnail() {
+    if (!card) return;
+    setCreatingThumb(true);
+    try {
+      // Usa o conceito salvo no card; se não houver, gera um com IA (e salva).
+      let brief = card.thumbnailPrompt?.trim() || '';
+      if (!brief) {
+        brief = await window.api.ai.generateThumbnailConcept(card.id);
+      }
+      navigateToThumbnailCreate({ brief: brief || card.title, preselectStyleRefs: 3 });
+      onClose();
+    } catch (err) {
+      showToast({
+        kind: 'error',
+        title: 'Falha ao gerar o conceito de thumbnail',
+        description: err instanceof Error ? err.message : String(err),
+      });
+    } finally {
+      setCreatingThumb(false);
     }
   }
 
@@ -385,6 +410,20 @@ export function CardEditorModal({ card, onClose, onChanged }: CardEditorModalPro
                 }}
               />
               <div className="flex flex-wrap gap-2">
+                <Button
+                  onClick={handleCreateThumbnail}
+                  disabled={creatingThumb}
+                  variant="primary"
+                  size="sm"
+                  title="Gera um conceito de thumbnail (se preciso) e abre o criador"
+                >
+                  {creatingThumb ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Sparkles className="h-3.5 w-3.5" />
+                  )}
+                  {creatingThumb ? 'Gerando conceito…' : 'Criar thumbnail'}
+                </Button>
                 <Button
                   onClick={() => fileInputRef.current?.click()}
                   variant="secondary"

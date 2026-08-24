@@ -191,6 +191,27 @@ export class AIService {
   }
 
   /**
+   * Conceito de thumbnail (brief visual) a partir do conteúdo do vídeo — vira o
+   * texto do campo 1 do criador de thumbnails. Texto livre (generateText).
+   */
+  async generateThumbnailConcept(input: {
+    title: string;
+    keyword: string;
+    contentSummary: string;
+  }): Promise<string> {
+    const prompt = await loadPrompt('thumbnail-concept', {
+      data: JSON.stringify(input, null, 2),
+    });
+    const { text } = await this.provider.generateText({
+      system:
+        'Você é diretor de arte de thumbnails de YouTube. Responda só com o conceito, em texto corrido, sem markdown.',
+      prompt,
+      maxTokens: 600,
+    });
+    return text.trim();
+  }
+
+  /**
    * Auditoria do canal a partir das métricas REAIS (YouTube Analytics) do
    * período atual + anterior. Devolve veredito, pontos fortes, o que corrigir
    * (com severidade e recomendação) e ganhos rápidos — tudo ancorado nos números.

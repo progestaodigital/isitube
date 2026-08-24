@@ -87,6 +87,24 @@ export async function generateCardSeo(cardId: string): Promise<CardSeoResponse> 
   return { seo, card: updated };
 }
 
+/** Gera um conceito de thumbnail a partir do conteúdo do card e SALVA em
+ *  `thumbnailPrompt` (vira o brief no criador de thumbnails). */
+export async function generateCardThumbnailConcept(cardId: string): Promise<string> {
+  const service = await requireService();
+  const card = await requireCard(cardId);
+  const contentSummary =
+    card.description?.trim() || card.script?.trim() || card.hook?.trim() || card.title;
+
+  const concept = await service.generateThumbnailConcept({
+    title: card.title,
+    keyword: card.mainKeyword ?? card.title,
+    contentSummary,
+  });
+
+  await updateCard(cardId, { thumbnailPrompt: concept });
+  return concept;
+}
+
 /** Gera 5 ganchos. NÃO preenche o card — o usuário escolhe um (que aí vira o
  *  campo `hook` via kanban.updateCard). */
 export async function generateCardHooks(cardId: string): Promise<CardHooksResult> {

@@ -108,6 +108,8 @@ const api: IsitubeAPI = {
       ipcRenderer.invoke('ai:card-hooks', cardId),
     generateCardScript: (cardId: string, targetLengthMin: number): Promise<KanbanCard> =>
       ipcRenderer.invoke('ai:card-script', cardId, targetLengthMin),
+    generateThumbnailConcept: (cardId: string): Promise<string> =>
+      ipcRenderer.invoke('ai:card-thumbnail-concept', cardId),
   },
   ideas: {
     generate: (input: IdeateInput): Promise<IdeasGenerateResult> =>
@@ -334,6 +336,8 @@ const api: IsitubeAPI = {
       ipcRenderer.invoke('thumbnails:add-from-video', videoId, kind, label),
     pickAutoStyleRef: (): Promise<ThumbnailAsset | null> =>
       ipcRenderer.invoke('thumbnails:pick-auto-ref'),
+    pickTopStyleRefs: (limit?: number): Promise<ThumbnailAsset[]> =>
+      ipcRenderer.invoke('thumbnails:pick-top-refs', limit),
     deleteAsset: (id: string): Promise<void> =>
       ipcRenderer.invoke('thumbnails:delete-asset', id),
     searchVideos: (query: string): Promise<VideoThumbnailHit[]> =>
@@ -362,7 +366,7 @@ const api: IsitubeAPI = {
     deleteScene: (id: string): Promise<void> =>
       ipcRenderer.invoke('thumbnails:delete-scene', id),
     buildPrompt: (
-      styleAssetId: string,
+      styleAssetId: string | null,
       instructions: string,
       hasScene: boolean
     ): Promise<string> =>

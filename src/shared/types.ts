@@ -514,6 +514,7 @@ export type KanbanCard = {
   chapters: VideoChapter[];
   hashtags: string[];
   hook: string | null;
+  thumbnailPrompt: string | null;
   script: string | null;
   thumbnails: KanbanCardThumbnail[];
   references: KanbanCardReference[];
@@ -544,6 +545,7 @@ export type KanbanCardPatch = {
   chapters?: VideoChapter[];
   hashtags?: string[];
   hook?: string | null;
+  thumbnailPrompt?: string | null;
   script?: string | null;
 };
 
@@ -1133,6 +1135,7 @@ export type IsitubeAPI = {
     generateCardSeo: (cardId: string) => Promise<CardSeoResponse>;
     generateCardHooks: (cardId: string) => Promise<CardHooksResult>;
     generateCardScript: (cardId: string, targetLengthMin: number) => Promise<KanbanCard>;
+    generateThumbnailConcept: (cardId: string) => Promise<string>;
   };
   ideas: {
     generate: (input: IdeateInput) => Promise<IdeasGenerateResult>;
@@ -1215,6 +1218,7 @@ export type IsitubeAPI = {
       label?: string
     ) => Promise<ThumbnailAsset>;
     pickAutoStyleRef: () => Promise<ThumbnailAsset | null>;
+    pickTopStyleRefs: (limit?: number) => Promise<ThumbnailAsset[]>;
     deleteAsset: (id: string) => Promise<void>;
     searchVideos: (query: string) => Promise<VideoThumbnailHit[]>;
     listCharacters: () => Promise<ThumbnailCharacter[]>;
@@ -1236,7 +1240,7 @@ export type IsitubeAPI = {
     deleteScene: (id: string) => Promise<void>;
     /** Lê a referência de estilo + instruções e devolve um prompt detalhado pronto. */
     buildPrompt: (
-      styleAssetId: string,
+      styleAssetId: string | null,
       instructions: string,
       hasScene: boolean
     ) => Promise<string>;

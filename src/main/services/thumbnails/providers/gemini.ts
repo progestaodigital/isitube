@@ -38,6 +38,24 @@ const BUILD_META = [
   '- Responda APENAS com o prompt final, sem comentários seus e sem code fence.',
 ].join('\n');
 
+// Versão sem imagem de referência — expande só o texto do criador.
+const BUILD_META_TEXT = [
+  'Você é diretor de arte especialista em thumbnails de YouTube. A partir do que o criador quer',
+  '(no fim), escreva UM prompt final, detalhado e estruturado, em português, para um modelo de',
+  'geração de imagem criar uma thumbnail de alto CTR.',
+  '',
+  'REGRAS:',
+  '- A identidade da pessoa vem de FOTOS fornecidas separadamente ao gerador. No prompt, instrua:',
+  '  "use a foto de referência da pessoa fornecida, preservando ao máximo a identidade real',
+  '  (formato do rosto, cabelo, pele, olhos)". NUNCA descreva a aparência da pessoa. A thumbnail',
+  '  tem UMA única pessoa — a das fotos.',
+  '- Descreva POSE, GESTO e ELEMENTOS em primeiro plano pro gerador reproduzir.',
+  '- Organize em seções claras: PESSOA, ELEMENTOS EM PRIMEIRO PLANO, COMPOSIÇÃO, TEXTO,',
+  '  FUNDO/CENÁRIO, ILUMINAÇÃO, ESTILO VISUAL, PRIORIDADE VISUAL. Seja específico e detalhado.',
+  '- Formato 16:9 (1280x720), alto CTR, legível quando pequeno (~168x94).',
+  '- Responda APENAS com o prompt final, sem comentários seus e sem code fence.',
+].join('\n');
+
 // Preço aproximado por imagem gerada. Usado só pra exibir uma estimativa no
 // histórico — não é cobrança real (a cobrança é direta na conta Google do user).
 const COST_PER_IMAGE_USD = 0.04;
@@ -245,6 +263,47 @@ export class GeminiImageProvider implements ImageProvider {
         },
       ],
     };
+
+    let json: any;
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        let msg = `Gemini vision error ${res.status}`;
+        try {
+          const b = (await res.json()) as { error?: { message?: string } };
+          if (b?.error?.message) msg = b.error.message;
+        } catch {
+          /* swallow non-JSON */
+        }
+        throw new Error(msg);
+      }
+      json = await res.json();
+      recordSuccess('gemini-image');
+    } catch (err) {
+      recordFailure('gemini-image', err);
+      throw err;
+    }
+
+    const parts: any[] = json?.candidates?.[0]?.content?.parts ?? [];
+    return parts
+      .map((p) => (typeof p?.text === 'string' ? p.text : ''))
+      .join(' ')
+      .trim();
+  }
+
+  async buildPromptFromText(brief: string, options?: { hasScene?: boolean }): Promise<string> {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${VISION_MODEL}:generateContent?key=${encodeURIComponent(this.apiKey)}`;
+    const sceneRule = options?.hasScene
+      ? '\n- FUNDO/CENÁRIO: uma imagem de CENÁRIO será fornecida separadamente ao gerador. NÃO invente outro fundo — instrua a usar EXATAMENTE o cenário fornecido como fundo/ambiente, descrevendo só como integrar a pessoa a ele (profundidade, separação do fundo, iluminação coerente).'
+      : '';
+    const text = `${BUILD_META_TEXT}${sceneRule}\n\nO QUE O CRIADOR QUER:\n${
+      brief?.trim() || '(sem detalhes — proponha uma thumbnail de alto CTR pro tema)'
+    }`;
+    const body = { contents: [{ role: 'user', parts: [{ text }] }] };
 
     let json: any;
     try {
