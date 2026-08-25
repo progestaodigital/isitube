@@ -93,6 +93,12 @@ export function registerKanbanHandlers(): void {
         p.thumbnailPrompt = o.thumbnailPrompt as string | null;
       }
       if (
+        o.format === null ||
+        (typeof o.format === 'string' && ['longo', 'short', 'live', 'estreia'].includes(o.format))
+      ) {
+        p.format = o.format as KanbanCardPatch['format'];
+      }
+      if (
         Array.isArray(o.secondaryKeywords) &&
         o.secondaryKeywords.every((k) => typeof k === 'string')
       ) {

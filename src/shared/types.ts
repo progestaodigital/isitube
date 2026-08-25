@@ -499,6 +499,9 @@ export type VideoChapter = {
   label: string;
 };
 
+/** Formato do vídeo do card. */
+export type KanbanCardFormat = 'longo' | 'short' | 'live' | 'estreia';
+
 export type KanbanCard = {
   id: string;
   columnId: string;
@@ -515,6 +518,7 @@ export type KanbanCard = {
   hashtags: string[];
   hook: string | null;
   thumbnailPrompt: string | null;
+  format: KanbanCardFormat | null;
   script: string | null;
   thumbnails: KanbanCardThumbnail[];
   references: KanbanCardReference[];
@@ -546,6 +550,7 @@ export type KanbanCardPatch = {
   hashtags?: string[];
   hook?: string | null;
   thumbnailPrompt?: string | null;
+  format?: KanbanCardFormat | null;
   script?: string | null;
 };
 

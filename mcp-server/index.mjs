@@ -50,6 +50,11 @@ const CARD_FIELDS = {
   script: z.string().nullable().optional().describe('Roteiro'),
   hook: z.string().nullable().optional().describe('Gancho (primeiros 30s)'),
   thumbnailPrompt: z.string().nullable().optional().describe('Brief/conceito da thumbnail'),
+  format: z
+    .enum(['longo', 'short', 'live', 'estreia'])
+    .nullable()
+    .optional()
+    .describe('Formato do vídeo: longo, short, live ou estreia'),
   tags: z.array(z.string()).optional().describe('Tags'),
   hashtags: z.array(z.string()).optional().describe('Hashtags (com #)'),
   secondaryKeywords: z.array(z.string()).optional().describe('Palavras-chave secundárias'),

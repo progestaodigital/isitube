@@ -215,6 +215,12 @@ function sanitizePatch(o: any): KanbanCardPatch {
   if (o.thumbnailPrompt === null || typeof o.thumbnailPrompt === 'string') {
     p.thumbnailPrompt = o.thumbnailPrompt;
   }
+  if (
+    o.format === null ||
+    (typeof o.format === 'string' && ['longo', 'short', 'live', 'estreia'].includes(o.format))
+  ) {
+    p.format = o.format;
+  }
   if (o.script === null || typeof o.script === 'string') p.script = o.script;
   if (Array.isArray(o.secondaryKeywords) && o.secondaryKeywords.every((k: any) => typeof k === 'string')) {
     p.secondaryKeywords = o.secondaryKeywords;

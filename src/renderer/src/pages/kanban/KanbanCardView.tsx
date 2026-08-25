@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Image as ImageIcon, Hash, BookMarked, FileText, Sparkles } from 'lucide-react';
 import { cn } from '../../lib/cn';
+import { FormatBadge } from './cardFormat';
 import type { KanbanCard } from '@shared/types';
 
 interface KanbanCardViewProps {
@@ -84,6 +85,11 @@ export function KanbanCardView({
         </div>
       )}
       <div className="space-y-1.5 p-2.5">
+        {card.format && (
+          <div>
+            <FormatBadge format={card.format} />
+          </div>
+        )}
         <h3 className={cn('text-sm font-medium leading-snug', !card.title && 'italic text-zinc-400')}>
           {card.title || 'Sem título'}
         </h3>

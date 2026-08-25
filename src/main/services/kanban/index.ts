@@ -220,6 +220,7 @@ export async function updateCard(
   if (patch.description !== undefined) data.description = patch.description;
   if (patch.hook !== undefined) data.hook = patch.hook;
   if (patch.thumbnailPrompt !== undefined) data.thumbnailPrompt = patch.thumbnailPrompt;
+  if (patch.format !== undefined) data.format = patch.format;
   if (patch.secondaryKeywords !== undefined) {
     data.secondaryKeywords = JSON.stringify(patch.secondaryKeywords);
   }
@@ -537,6 +538,7 @@ type DbCard = {
   hashtags: string | null;
   hook: string | null;
   thumbnailPrompt: string | null;
+  format: string | null;
   script: string | null;
   createdAt: Date;
   updatedAt: Date;
@@ -642,6 +644,7 @@ function projectCard(
     hashtags: parseStringArray(c.hashtags),
     hook: c.hook,
     thumbnailPrompt: c.thumbnailPrompt,
+    format: (c.format as KanbanCard['format']) ?? null,
     script: c.script,
     thumbnails,
     references,

@@ -14,6 +14,7 @@ import {
   Download,
   Search,
   Loader2,
+  Film,
 } from 'lucide-react';
 import { Modal } from '../../components/ui/Modal';
 import { Button } from '../../components/ui/Button';
@@ -24,7 +25,13 @@ import { cn } from '../../lib/cn';
 import { ReferencePickerModal } from './ReferencePickerModal';
 import { CardSeoSection } from './CardSeoSection';
 import { CardScriptSection } from './CardScriptSection';
-import type { KanbanCard, KanbanReferenceType, ThumbnailGeneration } from '@shared/types';
+import { CARD_FORMATS, FORMAT_META } from './cardFormat';
+import type {
+  KanbanCard,
+  KanbanCardPatch,
+  KanbanReferenceType,
+  ThumbnailGeneration,
+} from '@shared/types';
 
 interface CardEditorModalProps {
   card: KanbanCard | null;
@@ -58,7 +65,7 @@ export function CardEditorModal({ card, onClose, onChanged }: CardEditorModalPro
   }, [card?.id, card?.updatedAt]);
 
   const persistField = useCallback(
-    async (patch: { title?: string; mainKeyword?: string | null; script?: string | null; secondaryKeywords?: string[] }) => {
+    async (patch: KanbanCardPatch) => {
       if (!card) return;
       try {
         await window.api.kanban.updateCard(card.id, patch);
@@ -288,6 +295,30 @@ export function CardEditorModal({ card, onClose, onChanged }: CardEditorModalPro
                   onClick={handleKeywordCTA}
                 />
               )}
+            </div>
+          </Section>
+
+          {/* Formato do vídeo */}
+          <Section icon={Film} title="Formato">
+            <div className="flex flex-wrap gap-2">
+              {CARD_FORMATS.map((f) => {
+                const meta = FORMAT_META[f];
+                const active = card.format === f;
+                return (
+                  <button
+                    key={f}
+                    onClick={() => persistField({ format: active ? null : f })}
+                    className={cn(
+                      'rounded-full border px-3 py-1 text-xs font-medium transition-colors',
+                      active
+                        ? meta.active
+                        : 'border-zinc-300 text-zinc-600 hover:border-zinc-400 dark:border-zinc-700 dark:text-zinc-400 dark:hover:border-zinc-600'
+                    )}
+                  >
+                    {meta.label}
+                  </button>
+                );
+              })}
             </div>
           </Section>
 
