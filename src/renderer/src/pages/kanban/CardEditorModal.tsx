@@ -15,6 +15,7 @@ import {
   Search,
   Loader2,
   Film,
+  ClipboardList,
 } from 'lucide-react';
 import { Modal } from '../../components/ui/Modal';
 import { Button } from '../../components/ui/Button';
@@ -25,6 +26,7 @@ import { cn } from '../../lib/cn';
 import { ReferencePickerModal } from './ReferencePickerModal';
 import { CardSeoSection } from './CardSeoSection';
 import { CardScriptSection } from './CardScriptSection';
+import { CardPlanningSection } from './CardPlanningSection';
 import { CARD_FORMATS, FORMAT_META } from './cardFormat';
 import type {
   KanbanCard,
@@ -373,6 +375,11 @@ export function CardEditorModal({ card, onClose, onChanged }: CardEditorModalPro
             <CardScriptSection card={card} onChanged={onChanged} />
           </Section>
 
+          {/* Planejamento — anotações livres do criador */}
+          <Section icon={ClipboardList} title="Planejamento">
+            <CardPlanningSection card={card} onChanged={onChanged} />
+          </Section>
+
           {/* Thumbnails */}
           <Section icon={ImageIcon} title={`Thumbnails (${card.thumbnails.length})`}>
             <div className="space-y-2">
@@ -389,7 +396,7 @@ export function CardEditorModal({ card, onClose, onChanged }: CardEditorModalPro
                       )}
                     >
                       <img
-                        src={t.dataUrl}
+                        src={t.url}
                         alt=""
                         className="aspect-video w-full object-cover"
                         draggable={false}

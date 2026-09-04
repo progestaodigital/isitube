@@ -22,7 +22,7 @@ O isiTube precisa estar **aberto** e o bridge **ativado** em *Configurações �
 | `isitube_update_card(cardId, ...campos)` | Preenche/edita campos de um card |
 | `isitube_move_card(cardId, toColumnId, toPosition?)` | Move pra outra coluna / reordena |
 
-**Campos de card:** `title`, `mainKeyword`, `format` (`longo`|`short`|`live`|`estreia`), `description`, `script`, `hook`, `thumbnailPrompt`, `tags[]`, `hashtags[]`, `secondaryKeywords[]`, `chapters[{timestamp,label}]`.
+**Campos de card:** `title`, `mainKeyword`, `format` (`longo`|`short`|`live`|`estreia`), `description`, `script`, `hook`, `planning` (anotações livres de planejamento), `thumbnailPrompt`, `tags[]`, `hashtags[]`, `secondaryKeywords[]`, `chapters[{timestamp,label}]`.
 
 ## Fluxos
 

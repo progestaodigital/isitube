@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Image as ImageIcon, Hash, BookMarked, FileText, Sparkles } from 'lucide-react';
+import { Image as ImageIcon, Hash, BookMarked, FileText, Sparkles, ClipboardList } from 'lucide-react';
 import { cn } from '../../lib/cn';
 import { FormatBadge } from './cardFormat';
 import type { KanbanCard } from '@shared/types';
@@ -28,6 +28,7 @@ export function KanbanCardView({
   const cover = card.thumbnails.find((t) => t.id === card.coverThumbnailId);
   const refCount = card.references.length;
   const hasScript = Boolean(card.script && card.script.trim());
+  const hasPlanning = Boolean(card.planning && card.planning.trim());
 
   function onCardDragOver(e: React.DragEvent) {
     if (!draggingCardId || draggingCardId === card.id) return;
@@ -77,7 +78,7 @@ export function KanbanCardView({
       {cover && (
         <div className="aspect-video w-full overflow-hidden bg-zinc-100 dark:bg-zinc-800">
           <img
-            src={cover.dataUrl}
+            src={cover.url}
             alt=""
             className="h-full w-full object-cover"
             draggable={false}
@@ -113,7 +114,7 @@ export function KanbanCardView({
             )}
           </div>
         )}
-        {(card.thumbnails.length > 1 || refCount > 0 || hasScript) && (
+        {(card.thumbnails.length > 1 || refCount > 0 || hasScript || hasPlanning) && (
           <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[10px] text-zinc-500">
             {card.thumbnails.length > 1 && (
               <span className="inline-flex items-center gap-0.5">
@@ -131,6 +132,12 @@ export function KanbanCardView({
               <span className="inline-flex items-center gap-0.5">
                 <FileText className="h-3 w-3" />
                 roteiro
+              </span>
+            )}
+            {hasPlanning && (
+              <span className="inline-flex items-center gap-0.5">
+                <ClipboardList className="h-3 w-3" />
+                planejamento
               </span>
             )}
           </div>

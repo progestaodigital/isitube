@@ -1,11 +1,12 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { KanbanSquare, Plus } from 'lucide-react';
 import { Button } from '../components/ui/Button';
 import { useToastStore } from '../stores/toast';
+import { useKanbanStore } from '../stores/kanban';
 import { KanbanColumnView } from './kanban/KanbanColumnView';
 import { CardEditorModal } from './kanban/CardEditorModal';
 import { PromptModal } from './kanban/PromptModal';
-import type { KanbanBoard, KanbanCard, KanbanColumn } from '@shared/types';
+import type { KanbanCard, KanbanColumn } from '@shared/types';
 
 type ColumnPromptState =
   | { kind: 'create' }
@@ -14,18 +15,19 @@ type ColumnPromptState =
 
 export function KanbanPage() {
   const showToast = useToastStore((s) => s.show);
-  const [board, setBoard] = useState<KanbanBoard | null>(null);
+  // O board vive no store global: fica quente entre navegações (abertura
+  // instantânea) e se atualiza sozinho quando o main emite kanban-changed —
+  // inclusive pra mudanças feitas pelo bridge/MCP.
+  const board = useKanbanStore((s) => s.board);
+  const loading = useKanbanStore((s) => s.loading);
+  const refresh = useKanbanStore((s) => s.refresh);
   const [editingCardId, setEditingCardId] = useState<string | null>(null);
   const [draggingCardId, setDraggingCardId] = useState<string | null>(null);
   const [columnPrompt, setColumnPrompt] = useState<ColumnPromptState>(null);
 
-  const refresh = useCallback(async () => {
-    setBoard(await window.api.kanban.getBoard());
-  }, []);
-
   useEffect(() => {
-    refresh();
-  }, [refresh]);
+    useKanbanStore.getState().ensureLoaded();
+  }, []);
 
   // Lookup do card sendo editado — precisa olhar o board atual pra refletir
   // mudanças vindas do editor sem precisar passar prop drilling.
@@ -67,8 +69,16 @@ export function KanbanPage() {
   }
 
   async function handleToggleCollapsed(col: KanbanColumn) {
+    // Otimista: recolher/expandir é puramente visual, não faz sentido esperar
+    // o round-trip. O evento kanban-changed reconcilia depois.
+    if (board) {
+      useKanbanStore.getState().setBoard({
+        columns: board.columns.map((c) =>
+          c.id === col.id ? { ...c, collapsed: !col.collapsed } : c
+        ),
+      });
+    }
     await window.api.kanban.toggleColumnCollapsed(col.id, !col.collapsed);
-    await refresh();
   }
 
   async function handleDeleteColumn(col: KanbanColumn) {
@@ -127,10 +137,14 @@ export function KanbanPage() {
         draggedIdx >= 0 && draggedIdx < targetIdx ? targetIdx - 1 : targetIdx;
     }
 
+    // Reordena localmente antes do IPC pro card "grudar" onde foi solto sem
+    // esperar o banco. Se o move falhar, o refresh do catch desfaz.
+    useKanbanStore.getState().moveCardLocal(draggingCardId, toColumnId, toPosition);
+
     try {
       await window.api.kanban.moveCard(draggingCardId, toColumnId, toPosition);
-      await refresh();
     } catch (err) {
+      await refresh();
       showToast({
         kind: 'error',
         title: 'Falha ao mover card',
@@ -161,7 +175,9 @@ export function KanbanPage() {
       </header>
 
       {!board ? (
-        <p className="px-6 py-12 text-center text-sm text-zinc-500">Carregando board…</p>
+        <p className="px-6 py-12 text-center text-sm text-zinc-500">
+          {loading ? 'Carregando board…' : 'Não foi possível carregar o board.'}
+        </p>
       ) : (
         <div className="flex-1 overflow-x-auto overflow-y-hidden px-6 pb-6">
           <div className="flex h-full min-h-[400px] items-start gap-3">

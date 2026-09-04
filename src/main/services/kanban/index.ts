@@ -1,6 +1,8 @@
 import { dialog } from 'electron';
 import { writeFile } from 'node:fs/promises';
 import { getPrisma } from '../../db';
+import { emitKanbanChanged } from './events';
+import { kanbanThumbnailUrl } from './protocol';
 import type {
   KanbanBoard,
   KanbanCard,
@@ -42,7 +44,12 @@ export async function getBoard(): Promise<KanbanBoard> {
         where: { deletedAt: null },
         orderBy: { position: 'asc' },
         include: {
-          thumbnails: { orderBy: { position: 'asc' } },
+          thumbnails: {
+            // Sem o campo `data` de propósito — os bytes são servidos sob
+            // demanda pelo protocolo `isitube-thumb://`. Ver protocol.ts.
+            select: { id: true, position: true, mimeType: true, isCover: true },
+            orderBy: { position: 'asc' },
+          },
           references: {
             include: {
               video: {
@@ -137,6 +144,7 @@ export async function createColumn(name: string): Promise<KanbanColumn> {
   const col = await prisma.kanbanColumn.create({
     data: { name: trimmed, position: nextPos },
   });
+  emitKanbanChanged();
   return { id: col.id, name: col.name, position: col.position, collapsed: col.collapsed, cards: [] };
 }
 
@@ -147,6 +155,7 @@ export async function renameColumn(columnId: string, name: string): Promise<void
     where: { id: columnId },
     data: { name: trimmed },
   });
+  emitKanbanChanged();
 }
 
 export async function toggleColumnCollapsed(
@@ -157,6 +166,7 @@ export async function toggleColumnCollapsed(
     where: { id: columnId },
     data: { collapsed },
   });
+  emitKanbanChanged();
 }
 
 export async function deleteColumn(columnId: string): Promise<void> {
@@ -170,6 +180,7 @@ export async function deleteColumn(columnId: string): Promise<void> {
   // Hard delete — cascateia cards/thumbnails/references via FK. Mais limpo que
   // soft delete pra workflow de planejamento (raramente quer "recuperar coluna").
   await prisma.kanbanColumn.delete({ where: { id: columnId } });
+  emitKanbanChanged();
 }
 
 export async function reorderColumns(columnIds: string[]): Promise<void> {
@@ -179,6 +190,7 @@ export async function reorderColumns(columnIds: string[]): Promise<void> {
       prisma.kanbanColumn.update({ where: { id }, data: { position: i } })
     )
   );
+  emitKanbanChanged();
 }
 
 // =============================================================================
@@ -206,6 +218,7 @@ export async function createCard(columnId: string, title = ''): Promise<KanbanCa
     data: { columnId, position: nextPos, title },
     include: cardInclude(),
   });
+  emitKanbanChanged();
   return projectCard(card, new Map());
 }
 
@@ -220,6 +233,7 @@ export async function updateCard(
   if (patch.description !== undefined) data.description = patch.description;
   if (patch.hook !== undefined) data.hook = patch.hook;
   if (patch.thumbnailPrompt !== undefined) data.thumbnailPrompt = patch.thumbnailPrompt;
+  if (patch.planning !== undefined) data.planning = patch.planning;
   if (patch.format !== undefined) data.format = patch.format;
   if (patch.secondaryKeywords !== undefined) {
     data.secondaryKeywords = JSON.stringify(patch.secondaryKeywords);
@@ -246,6 +260,7 @@ export async function updateCard(
     data,
     include: cardInclude(),
   });
+  emitKanbanChanged();
   return projectCard(card, new Map());
 }
 
@@ -299,12 +314,15 @@ export async function moveCard(
       )
     );
   }
+
+  emitKanbanChanged();
 }
 
 export async function deleteCard(cardId: string): Promise<void> {
   // Hard delete — workflow de planejamento; cards cancelados ficam "fora"
   // da head do usuário e não dá pra desfazer pelo app.
   await getPrisma().kanbanCard.delete({ where: { id: cardId } });
+  emitKanbanChanged();
 }
 
 // =============================================================================
@@ -341,6 +359,7 @@ export async function addThumbnail(
     where: { id: cardId },
     include: cardInclude(),
   });
+  emitKanbanChanged();
   return projectCard(card, new Map());
 }
 
@@ -367,6 +386,7 @@ export async function deleteThumbnail(thumbnailId: string): Promise<KanbanCard> 
     where: { id: thumb.cardId },
     include: cardInclude(),
   });
+  emitKanbanChanged();
   return projectCard(card, new Map());
 }
 
@@ -389,6 +409,7 @@ export async function setCoverThumbnail(thumbnailId: string): Promise<KanbanCard
     where: { id: thumb.cardId },
     include: cardInclude(),
   });
+  emitKanbanChanged();
   return projectCard(card, new Map());
 }
 
@@ -428,6 +449,7 @@ export async function addThumbnailFromGeneration(
     where: { id: cardId },
     include: cardInclude(),
   });
+  emitKanbanChanged();
   return projectCard(card, new Map());
 }
 
@@ -476,6 +498,7 @@ export async function addReference(
     where: { id: cardId },
     include: cardInclude(),
   });
+  emitKanbanChanged();
   return projectCard(card, new Map());
 }
 
@@ -489,6 +512,7 @@ export async function removeReference(referenceId: string): Promise<KanbanCard> 
     where: { id: ref.cardId },
     include: cardInclude(),
   });
+  emitKanbanChanged();
   return projectCard(card, new Map());
 }
 
@@ -498,7 +522,11 @@ export async function removeReference(referenceId: string): Promise<KanbanCard> 
 
 function cardInclude() {
   return {
-    thumbnails: { orderBy: { position: 'asc' as const } },
+    thumbnails: {
+      // Idem getBoard: nada de bytes no payload.
+      select: { id: true, position: true, mimeType: true, isCover: true },
+      orderBy: { position: 'asc' as const },
+    },
     references: {
       include: {
         video: {
@@ -540,12 +568,12 @@ type DbCard = {
   thumbnailPrompt: string | null;
   format: string | null;
   script: string | null;
+  planning: string | null;
   createdAt: Date;
   updatedAt: Date;
   thumbnails: Array<{
     id: string;
     position: number;
-    data: Buffer | Uint8Array;
     mimeType: string;
     isCover: boolean;
   }>;
@@ -592,7 +620,7 @@ function projectCard(
     position: t.position,
     isCover: t.isCover,
     mimeType: t.mimeType,
-    dataUrl: bufferToDataUrl(t.data, t.mimeType),
+    url: kanbanThumbnailUrl(t.id),
   }));
 
   const coverThumb = thumbnails.find((t) => t.isCover);
@@ -646,6 +674,7 @@ function projectCard(
     thumbnailPrompt: c.thumbnailPrompt,
     format: (c.format as KanbanCard['format']) ?? null,
     script: c.script,
+    planning: c.planning,
     thumbnails,
     references,
     coverThumbnailId: coverThumb?.id ?? null,
@@ -677,7 +706,3 @@ function parseChapters(json: string | null): VideoChapter[] {
   }
 }
 
-function bufferToDataUrl(data: Buffer | Uint8Array, mimeType: string): string {
-  const buf = data instanceof Buffer ? data : Buffer.from(data);
-  return `data:${mimeType};base64,${buf.toString('base64')}`;
-}

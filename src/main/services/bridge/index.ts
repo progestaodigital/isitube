@@ -222,6 +222,7 @@ function sanitizePatch(o: any): KanbanCardPatch {
     p.format = o.format;
   }
   if (o.script === null || typeof o.script === 'string') p.script = o.script;
+  if (o.planning === null || typeof o.planning === 'string') p.planning = o.planning;
   if (Array.isArray(o.secondaryKeywords) && o.secondaryKeywords.every((k: any) => typeof k === 'string')) {
     p.secondaryKeywords = o.secondaryKeywords;
   }

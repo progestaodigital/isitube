@@ -528,6 +528,13 @@ const api: IsitubeAPI = {
         ipcRenderer.removeListener('events:toast', listener);
       };
     },
+    onKanbanChanged: (handler) => {
+      const listener = () => handler();
+      ipcRenderer.on('events:kanban-changed', listener);
+      return () => {
+        ipcRenderer.removeListener('events:kanban-changed', listener);
+      };
+    },
     onCredentialsChanged: (handler) => {
       const listener = (
         _e: Electron.IpcRendererEvent,

@@ -50,6 +50,11 @@ const CARD_FIELDS = {
   script: z.string().nullable().optional().describe('Roteiro'),
   hook: z.string().nullable().optional().describe('Gancho (primeiros 30s)'),
   thumbnailPrompt: z.string().nullable().optional().describe('Brief/conceito da thumbnail'),
+  planning: z
+    .string()
+    .nullable()
+    .optional()
+    .describe('Anotações livres de planejamento (o que gravar, com quem, o que preparar)'),
   format: z
     .enum(['longo', 'short', 'live', 'estreia'])
     .nullable()
@@ -147,7 +152,7 @@ server.tool(
 
 server.tool(
   'isitube_update_card',
-  'Preenche/edita os campos de um card existente (título, descrição, tags, capítulos, hashtags, gancho, roteiro, keyword, thumbnailPrompt).',
+  'Preenche/edita os campos de um card existente (título, descrição, tags, capítulos, hashtags, gancho, roteiro, planejamento, keyword, thumbnailPrompt).',
   {
     cardId: z.string().describe('id do card'),
     ...CARD_FIELDS,

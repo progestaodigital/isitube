@@ -12,6 +12,7 @@ import { LicenseGateModal } from './components/license/LicenseGateModal';
 import { MissedTasksModal } from './components/MissedTasksModal';
 import { useLicense } from './hooks/useLicense';
 import { useUpdateRunStore } from './stores/updateRun';
+import { useKanbanStore } from './stores/kanban';
 
 export function App() {
   const theme = useThemeStore((s) => s.theme);
@@ -51,6 +52,19 @@ export function App() {
       offStarted();
       offCompleted();
     };
+  }, []);
+
+  // Kanban: prefetch no boot + assinatura do evento de mudança. Fica aqui
+  // (e não na página) por dois motivos — o board já está quente na primeira
+  // vez que o usuário abre a tela, e mudanças feitas por fora do app (bridge
+  // HTTP local / MCP do Claude Code) aparecem na hora, mesmo se a página
+  // estiver montada há horas.
+  useEffect(() => {
+    useKanbanStore.getState().ensureLoaded();
+    const off = window.api.events.onKanbanChanged(() => {
+      useKanbanStore.getState().refresh();
+    });
+    return off;
   }, []);
 
   // Loading state: theme + license. Show a minimal splash so the chrome

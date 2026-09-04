@@ -92,6 +92,9 @@ export function registerKanbanHandlers(): void {
       if (o.thumbnailPrompt === null || typeof o.thumbnailPrompt === 'string') {
         p.thumbnailPrompt = o.thumbnailPrompt as string | null;
       }
+      if (o.planning === null || typeof o.planning === 'string') {
+        p.planning = o.planning as string | null;
+      }
       if (
         o.format === null ||
         (typeof o.format === 'string' && ['longo', 'short', 'live', 'estreia'].includes(o.format))

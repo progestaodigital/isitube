@@ -370,6 +370,9 @@ model KanbanCard {
   thumbnailPrompt   String?      @map("thumbnail_prompt") // brief de thumbnail (do agente de ideação)
   format            String?      // formato do vídeo: 'longo' | 'short' | 'live' | 'estreia'
   script            String?
+  // Anotações livres de planejamento do vídeo (o que gravar, com quem, o que
+  // comprar/preparar). Diferente de `script`: não é o texto que vai ao ar.
+  planning          String?
 
   thumbnails KanbanCardThumbnail[]
   references KanbanCardReference[]

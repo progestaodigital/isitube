@@ -7,6 +7,14 @@ import { scheduleNextTimer } from './services/channels/scheduler';
 import { startScheduler } from './services/schedules';
 import { initBridge, stopBridge } from './services/bridge';
 import { purgeExpiredDeletedVideos } from './services/videos';
+import {
+  registerKanbanThumbnailProtocol,
+  registerKanbanThumbnailScheme,
+} from './services/kanban/protocol';
+
+// Precisa acontecer no load do módulo, antes do app ficar ready — o Chromium
+// congela a tabela de schemes no boot.
+registerKanbanThumbnailScheme();
 
 const isDev = !app.isPackaged;
 
@@ -67,6 +75,10 @@ app.whenReady().then(async () => {
   } catch (error) {
     console.error('[isiTube] Database init failed:', error);
   }
+
+  // Serve os BLOBs de thumbnail do Kanban sob demanda (isitube-thumb://),
+  // pro board não precisar carregar imagem nenhuma no payload do IPC.
+  registerKanbanThumbnailProtocol();
 
   registerIpcHandlers();
   createMainWindow();

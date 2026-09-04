@@ -462,8 +462,12 @@ export type KanbanCardThumbnail = {
   id: string;
   position: number;
   isCover: boolean;
-  /** Data URL (`data:image/png;base64,...`) já montada pelo main process. */
-  dataUrl: string;
+  /**
+   * URL servida pelo protocolo custom `isitube-thumb://kanban/<id>` — os bytes
+   * ficam fora do payload do board (senão cada refresh arrastaria dezenas de
+   * MB por IPC). Imutável por id, então o Chromium cacheia.
+   */
+  url: string;
   mimeType: string;
 };
 
@@ -518,6 +522,8 @@ export type KanbanCard = {
   hashtags: string[];
   hook: string | null;
   thumbnailPrompt: string | null;
+  /** Anotações livres de planejamento (não é o roteiro que vai ao ar). */
+  planning: string | null;
   format: KanbanCardFormat | null;
   script: string | null;
   thumbnails: KanbanCardThumbnail[];
@@ -550,6 +556,7 @@ export type KanbanCardPatch = {
   hashtags?: string[];
   hook?: string | null;
   thumbnailPrompt?: string | null;
+  planning?: string | null;
   format?: KanbanCardFormat | null;
   script?: string | null;
 };
@@ -1317,5 +1324,7 @@ export type IsitubeAPI = {
     onUpdateRunStarted: (handler: (run: UpdateRunInfo) => void) => () => void;
     onUpdateRunCompleted: (handler: (run: UpdateRunInfo) => void) => () => void;
     onToast: (handler: (payload: ToastPayload) => void) => () => void;
+    /** Board do Kanban mudou (por aqui ou pelo bridge/MCP). Payload vazio. */
+    onKanbanChanged: (handler: () => void) => () => void;
   };
 };
