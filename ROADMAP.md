@@ -3,7 +3,7 @@
 > Software desktop de inteligência competitiva e planejamento de conteúdo para criadores no YouTube.
 > Stack: Electron + React + TypeScript + Vite + Prisma + SQLite + Vercel AI SDK + Claude.
 
-**Status atual:** Fases 14-16 concluídas — **DataForSEO** (substitui Keywords Everywhere) · **Criar/Ideação + agentes de IA no card** (SEO, gancho→roteiro) · **Thumbnails em 2 campos** (brief → prompt) com conceito por IA e "Criar thumbnail" no card · **Release v0.8.0 publicada** · **Próxima:** YouTube SERP via DataForSEO (trocar o ytsr frágil) ou aprofundar os agentes (search intent, calendário)
+**Status atual:** Fases 17-18 concluídas — **Bridge local + MCP** (Claude Code cria/edita/move cards e lê a Biblioteca) · **Kanban instantâneo** (thumbnails saem do payload via protocolo próprio; board em store global com prefetch) + **mudanças do MCP refletem na tela na hora** · **Campo Planejamento** e **tag de formato** no card · **Release v0.10.0 publicada** · **Próxima:** YouTube SERP via DataForSEO (trocar o ytsr frágil) ou aprofundar os agentes (search intent, calendário)
 **Início:** Maio de 2026 · **MVP previsto:** 9-12 semanas
 
 ---
@@ -44,6 +44,8 @@ Estas regras valem em **todas as fases** e não devem ser quebradas sem decisão
 | 14 | DataForSEO (fonte de SEO real) | ✅ feito | Substitui Keywords Everywhere; volume clickstream + CPC + dificuldade real + sazonalidade + ideias de keyword (v0.8.0) |
 | 15 | Criar (Ideação) + agentes de IA no card | ✅ feito | Página Criar (8 ideias, auto-pull do canal, estilo da Biblioteca, persistência→Kanban) + SEO/gancho→roteiro no card preenchendo os campos (v0.8.0) |
 | 16 | Thumbnails — criação em 2 campos + conceito por IA | ✅ feito | Brief→prompt editável, "Criar thumbnail" no card com conceito por IA + 3 refs da Biblioteca (v0.8.0) |
+| 17 | Bridge local + MCP pro Claude Code | ✅ feito | HTTP em 127.0.0.1 com bearer token reusando os serviços do app + `mcp-server/` com 6 tools + skill; tag de formato no card (v0.9.0) |
+| 18 | Kanban instantâneo + Planejamento | ✅ feito | Thumbnails fora do payload via `isitube-thumb://` (5,7 MB → 17 kB), board em store global com prefetch, mudanças do MCP ao vivo, campo Planejamento (v0.10.0) |
 
 > Nota: as versões entre v0.4.0 e v0.6.2 (lixeira/retention, busca global, auto-update) não foram documentadas como fases neste arquivo. A Fase 11 retoma o registro a partir do trabalho de hardening de licença.
 
@@ -782,6 +784,48 @@ npm run db:reset      # apaga DB de dev e re-aplica todas migrations
 - Referência de estilo só entra no gerador como texto (via prompt) — a pessoa da referência nunca vaza pra imagem (mantém o padrão da Fase 12).
 
 **Commit:** `fdc8c08` · **Release:** v0.8.0.
+
+---
+
+## Fase 17 — Bridge local + MCP pro Claude Code ✅
+
+**Objetivo:** Deixar o Claude Code ler a Biblioteca e gerenciar o Kanban sem sair do editor.
+
+**Entregue:**
+- **Bridge HTTP** em `127.0.0.1` protegido por bearer token, rodando **dentro do main process**: `GET /library`, `GET /kanban/board`, `GET /kanban/card/:id`, `POST /kanban/card`, `PATCH /kanban/card/:id`, `POST /kanban/card/:id/move`. Opt-in em *Configurações → Integração MCP* (toggle, token, regenerar).
+- **`mcp-server/`:** servidor MCP em Node com 6 tools (`library_search`, `kanban_board`, `get_card`, `create_card`, `update_card`, `move_card`) que proxeiam o bridge.
+- **`.claude/skills/isitube/SKILL.md`:** roteamento das tools pro Claude Code.
+- **Tag de formato no card:** campo `format` (`longo`|`short`|`live`|`estreia`) com seletor no editor e badge no board, validado no IPC, no `sanitizePatch` do bridge e como enum no MCP.
+
+**Arquivos-chave:** `src/main/services/bridge/index.ts`, `src/main/ipc/bridge.ts`, `mcp-server/index.mjs`, `.claude/skills/isitube/SKILL.md`, `src/renderer/src/pages/settings/BridgeSection.tsx`, `src/renderer/src/pages/kanban/cardFormat.tsx`.
+
+**Decisões importantes:**
+- O bridge roda **no processo do app** e reusa o mesmo Prisma client e as mesmas funções de service das telas — sem dois writers, sem lógica duplicada. Foi isso que depois permitiu a Fase 18 emitir o evento de mudança num lugar só e cobrir UI e MCP de uma vez.
+- Nunca escuta fora de `127.0.0.1`, e o bridge fica **desligado por padrão**.
+
+**Commits:** `4e9f8be`, `0fbe7f3` · **Release:** v0.9.0.
+
+---
+
+## Fase 18 — Kanban instantâneo + campo Planejamento ✅
+
+**Objetivo:** Fazer o board abrir na hora e refletir na hora o que o MCP muda.
+
+**Entregue:**
+- **Thumbnails fora do payload:** protocolo custom `isitube-thumb://kanban/<id>` serve os BLOBs sob demanda. Antes o `getBoard()` embutia cada imagem como data URL base64 — na base real, 4,14 MB de blobs viravam **~5,7 MB trafegados por IPC a cada carregamento**, e o refresh rodava depois de *toda* mutação (inclusive cada drag). Medido depois: **payload de 17,3 kB, `getBoard()` em 34 ms**.
+- **Abertura instantânea:** o board saiu do `useState` da página pro store global `stores/kanban.ts`, com prefetch no boot do App — clicar em "Kanban" não espera round-trip nenhum. Refreshes concorrentes são coalescidos.
+- **Mudanças ao vivo:** as 15 mutações do service emitem `events:kanban-changed`. Como o bridge usa as mesmas funções, o que o Claude Code muda via MCP aparece na tela na hora, mesmo com a página aberta há horas.
+- **Drag & drop otimista** (e recolher coluna): o card gruda onde foi solto; o refresh só reverte se o IPC falhar.
+- **Campo Planejamento:** coluna `planning` — anotações livres do criador (o que gravar, com quem, o que preparar). Seção no editor, selo no card do board e exposto no MCP.
+
+**Arquivos-chave:** `src/main/services/kanban/protocol.ts`, `src/main/services/kanban/events.ts`, `src/main/services/kanban/index.ts`, `src/renderer/src/stores/kanban.ts`, `src/renderer/src/pages/KanbanPage.tsx`, `src/renderer/src/pages/kanban/CardPlanningSection.tsx`.
+
+**Decisões importantes:**
+- Thumbnail é **imutável por id** (editar cria outra linha), então a resposta do protocolo vai com `Cache-Control: immutable` — o Chromium busca em paralelo, fora da thread do JS, e não rebusca em refresh. Exigiu `registerSchemesAsPrivileged` antes do app ready e `isitube-thumb:` no `img-src` do CSP.
+- O evento vive no **service**, não no handler de IPC: é o único ponto por onde UI e bridge passam, então cobre os dois sem instrumentar o bridge à parte.
+- O campo Planejamento **não tem agente de IA** de propósito — é rascunho do criador, não texto que vai pro YouTube (isso é `script`/`description`).
+
+**Commit:** `381678e` · **Release:** v0.10.0.
 
 ---
 
