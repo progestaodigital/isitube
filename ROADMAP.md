@@ -3,7 +3,7 @@
 > Software desktop de inteligência competitiva e planejamento de conteúdo para criadores no YouTube.
 > Stack: Electron + React + TypeScript + Vite + Prisma + SQLite + Vercel AI SDK + Claude.
 
-**Status atual:** Fases 17-18 concluídas — **Bridge local + MCP** (Claude Code cria/edita/move cards e lê a Biblioteca) · **Kanban instantâneo** (thumbnails saem do payload via protocolo próprio; board em store global com prefetch) + **mudanças do MCP refletem na tela na hora** · **Campo Planejamento** e **tag de formato** no card · **Release v0.10.0 publicada** · **Próxima:** YouTube SERP via DataForSEO (trocar o ytsr frágil) ou aprofundar os agentes (search intent, calendário)
+**Status atual:** Fases 17-18 concluídas — **Bridge local + MCP** (Claude Code cria/edita/move cards e lê a Biblioteca) · **Kanban instantâneo** (thumbnails saem do payload via protocolo próprio; board em store global com prefetch) + **mudanças do MCP refletem na tela na hora** · **Campo Planejamento** e **tag de formato** no card · **Release v0.10.0 publicada** · **Pendências abertas:** ver `## Pendências conhecidas` (typecheck com 148 erros) · **Próxima:** YouTube SERP via DataForSEO (trocar o ytsr frágil) ou aprofundar os agentes (search intent, calendário)
 **Início:** Maio de 2026 · **MVP previsto:** 9-12 semanas
 
 ---
@@ -826,6 +826,45 @@ npm run db:reset      # apaga DB de dev e re-aplica todas migrations
 - O campo Planejamento **não tem agente de IA** de propósito — é rascunho do criador, não texto que vai pro YouTube (isso é `script`/`description`).
 
 **Commit:** `381678e` · **Release:** v0.10.0.
+
+---
+
+## Pendências conhecidas
+
+Itens levantados e **não resolvidos**. Nenhum deles quebra o app em runtime — a v0.10.0 está sadia.
+
+### 1. `npm run typecheck` nunca passou — 148 erros ⏳
+
+**Não é regressão.** Os imports quebrados existem desde o commit inicial (`2eb95f7`); `src/shared/types.ts` só cresceu (1130 → 1330 linhas), nada foi perdido. Esses tipos nunca foram escritos.
+
+14 tipos que o preload e o renderer importam de `@shared/types` e que não existem em lugar nenhum do `src/`:
+
+```
+BackupExportResult   BackupImportResult    BackupInspectResult   BackupManifest
+GithubBackupConfig   GithubBackupRelease   GithubListResult      GithubUploadResult
+ChannelTimeSeriesMetric   ChannelTimeSeriesPayload
+FreeIdeaSource   FreeKeywordIdea   FreeKeywordIdeasResult   SaveFileResult
+```
+
+Como o tipo `IsitubeAPI` não declara as seções correspondentes, cascateiam **70 erros TS2339** ("Property does not exist") em `api.backup.*`, `api.videos.remove`, `api.channels.removeMany`, `events.onCredentialsChanged` e afins. Distribuição: 70×TS2339, 21×TS2305, 15×TS2322, 14×TS7006, 6×TS6133, 6×TS2724, 6×TS2345, resto pulverizado.
+
+**Por que não quebra:** o electron-vite/esbuild transpila sem checar tipos. O runtime nunca vê isso.
+
+**Por que importa:** o Constraint 3 deste roadmap ("IPC tipado pelo `contextBridge`") não é verificado por ninguém — o compilador nunca valida o contrato entre main, preload e renderer. Isso já produziu drift real: na Fase 18, `IsitubeAPI.events` não declarava `onCredentialsChanged` embora o preload exponha há tempo. Não há CI nem hook de pre-commit que pegue.
+
+**Como atacar:** definir os 14 tipos + completar as seções faltantes do `IsitubeAPI` deve derrubar a maioria. O resto (implicit `any`, imports não usados, mismatches) precisa ser olhado caso a caso — pode haver bug real escondido ali. Considerar um gate (`typecheck` no pre-commit ou CI) só **depois** de zerar, senão trava todo commit.
+
+### 2. Arquivos de marketing soltos no repo ⏳
+
+`isitube-benchmark.docx`, `isitube-oferta.md`, `isitube-vendas.html` e `marketing/` estão untracked. Decidir: entram no repo, vão pro `.gitignore`, ou saem da pasta do projeto.
+
+### 3. `dist/` acumulando instaladores ⏳
+
+3,7 GB em 22 `.exe` (os anteriores à v0.8.0 têm 159 MB cada). Já está no `.gitignore`, então é só disco local — dá pra apagar tudo menos o da versão corrente.
+
+### 4. Validar a v0.10.0 instalada ⏳
+
+A migração `add_card_planning` foi testada aplicando na base de dev (log `[migrations] Applied`, round-trip do campo ok), mas ainda **não** numa instalação real por cima da v0.9.0. Instalar e abrir uma vez pra confirmar.
 
 ---
 
