@@ -435,6 +435,19 @@ export type VideoDetail = VideoInfo & {
  */
 export type LibraryItem = VideoDetail & {
   libraryAddedAt: string;
+  /**
+   * Segundo marcador de "em alta", **sem janela de tempo**: total de views do
+   * vídeo vs. média histórica de views por vídeo do canal. Não expira.
+   *
+   * Convive com o marcador do período (`flaggedAsOutlier` / `outlierPercent`,
+   * herdados de VideoDetail), que mede tração dos últimos 30 dias e some
+   * quando o vídeo envelhece — por design, são perguntas diferentes.
+   */
+  lifetimeOutlier: boolean;
+  /** `(views / média do canal) * 100`. Null quando o canal não tem média. */
+  lifetimeOutlierPercent: number | null;
+  /** Média histórica de views por vídeo do canal usada na conta acima. */
+  channelLifetimeAvgViews: number | null;
 };
 
 export type LibraryFilters = {

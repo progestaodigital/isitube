@@ -9,6 +9,7 @@ import {
   Clock,
   Calendar,
   Flame,
+  TrendingUp,
   Save,
   X,
 } from 'lucide-react';
@@ -140,6 +141,18 @@ export function LibraryPage() {
             <span className="text-xs text-zinc-500">
               {stats.withNotes} com anotação
             </span>
+            {/* Legenda dos dois selos — sem ela, dois badges de porcentagem
+                lado a lado parecem a mesma métrica. */}
+            <span className="inline-flex items-center gap-3 text-[11px] text-zinc-400">
+              <span className="inline-flex items-center gap-1">
+                <Flame className="h-3 w-3 text-amber-500" />
+                em alta no período
+              </span>
+              <span className="inline-flex items-center gap-1">
+                <TrendingUp className="h-3 w-3 text-emerald-500" />
+                acima da média do canal
+              </span>
+            </span>
           </>
         )}
         <ExportMenu
@@ -264,12 +277,34 @@ export function LibraryPage() {
                     <div className="min-w-0 flex-1">
                       <div className="flex items-start justify-between gap-2">
                         <p className="line-clamp-2 text-sm font-medium">{v.title}</p>
-                        {v.flaggedAsOutlier && (
-                          <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-800 dark:bg-amber-950 dark:text-amber-300">
-                            <Flame className="h-3 w-3" />
-                            {Math.round(v.outlierPercent ?? 0)}%
-                          </span>
-                        )}
+                        <div className="flex shrink-0 items-center gap-1">
+                          {/* Em alta no período — tração dos últimos 30 dias.
+                              Some quando o vídeo envelhece, e tudo bem: mede agora. */}
+                          {v.flaggedAsOutlier && (
+                            <span
+                              className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-800 dark:bg-amber-950 dark:text-amber-300"
+                              title={`Em alta no período — ${Math.round(v.outlierPercent ?? 0)}% do ritmo de views/dia dos outros vídeos ativos do canal nos últimos 30 dias.`}
+                            >
+                              <Flame className="h-3 w-3" />
+                              {Math.round(v.outlierPercent ?? 0)}%
+                            </span>
+                          )}
+                          {/* Em alta sem janela — total de views vs. média
+                              histórica do canal. Não expira. */}
+                          {v.lifetimeOutlier && (
+                            <span
+                              className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300"
+                              title={`Acima da média do canal — ${Math.round(v.lifetimeOutlierPercent ?? 0)}% da média histórica${
+                                v.channelLifetimeAvgViews
+                                  ? ` (${formatCompact(v.channelLifetimeAvgViews)} views/vídeo)`
+                                  : ''
+                              }. Não expira com o tempo.`}
+                            >
+                              <TrendingUp className="h-3 w-3" />
+                              {Math.round(v.lifetimeOutlierPercent ?? 0)}%
+                            </span>
+                          )}
+                        </div>
                       </div>
                       {v.channelTitle && (
                         <p className="mt-0.5 text-xs text-zinc-500">{v.channelTitle}</p>

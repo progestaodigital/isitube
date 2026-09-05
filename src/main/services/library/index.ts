@@ -1,4 +1,5 @@
 import { getPrisma } from '../../db';
+import { getOutlierThreshold } from '../channels';
 import type {
   LibraryActionResult,
   LibraryFilters,
@@ -122,7 +123,63 @@ export async function listLibrary(
     include: { channel: { select: { title: true } } },
   });
 
-  return videos.map(projectLibraryItem);
+  const [threshold, averages] = await Promise.all([
+    getOutlierThreshold(),
+    channelLifetimeAverages(videos.map((v) => v.channelId)),
+  ]);
+
+  return videos.map((v) => projectLibraryItem(v, averages.get(v.channelId) ?? 0, threshold));
+}
+
+/**
+ * Média de views por vídeo de cada canal, **sem janela de tempo**.
+ *
+ * Por que existe: o `flaggedAsOutlier` gravado no banco é recalculado a cada
+ * atualização olhando só os últimos 30 dias (ver `channels/index.ts`), então
+ * todo vídeo perde o selo de "em alta" ao envelhecer. Na Biblioteca isso é
+ * errado — um vídeo de 3 meses com 500 mil views num canal que faz 100 mil
+ * continua sendo um vídeo em alta. Aqui a comparação é vitalícia.
+ *
+ * Fonte preferida: as estatísticas do próprio canal (`totalViewCount /
+ * videoCount`), que cobrem o catálogo inteiro mesmo que a gente só monitore
+ * parte dele. Se o canal não tiver essas stats, cai pra média dos vídeos que
+ * temos guardados.
+ */
+async function channelLifetimeAverages(
+  channelIds: string[]
+): Promise<Map<string, number>> {
+  const ids = Array.from(new Set(channelIds));
+  const out = new Map<string, number>();
+  if (ids.length === 0) return out;
+
+  const prisma = getPrisma();
+  const channels = await prisma.channel.findMany({
+    where: { id: { in: ids } },
+    select: { id: true, totalViewCount: true, videoCount: true },
+  });
+
+  const needFallback: string[] = [];
+  for (const id of ids) {
+    const c = channels.find((x) => x.id === id);
+    const total = c?.totalViewCount != null ? Number(c.totalViewCount) : 0;
+    const count = c?.videoCount ?? 0;
+    if (total > 0 && count > 0) out.set(id, total / count);
+    else needFallback.push(id);
+  }
+
+  if (needFallback.length > 0) {
+    const grouped = await prisma.video.groupBy({
+      by: ['channelId'],
+      where: { channelId: { in: needFallback }, deletedAt: null },
+      _avg: { viewCount: true },
+    });
+    for (const g of grouped) {
+      const avg = g._avg.viewCount;
+      if (avg != null && Number(avg) > 0) out.set(g.channelId, Number(avg));
+    }
+  }
+
+  return out;
 }
 
 type DbVideoForLibrary = {
@@ -155,7 +212,11 @@ type DbVideoForLibrary = {
   libraryNotes: string | null;
 };
 
-function projectLibraryItem(v: DbVideoForLibrary): LibraryItem {
+function projectLibraryItem(
+  v: DbVideoForLibrary,
+  channelAvgViews: number,
+  thresholdPercent: number
+): LibraryItem {
   let parsedTags: string[] | null = null;
   if (v.tags) {
     try {
@@ -168,6 +229,18 @@ function projectLibraryItem(v: DbVideoForLibrary): LibraryItem {
   // libraryAddedAt nunca deveria ser null aqui (filtramos por inLibrary=true),
   // mas defensivamente usamos createdAt como fallback se for o caso.
   const addedAtIso = (v.libraryAddedAt ?? v.publishedAt).toISOString();
+
+  // Dois marcadores independentes, de propósito:
+  //   - `flaggedAsOutlier` (do banco) = em alta NO PERÍODO: views/dia nos
+  //     últimos 30d vs. os outros vídeos ativos. Some quando o vídeo envelhece,
+  //     e isso é correto — mede tração de agora.
+  //   - `lifetimeOutlier` (calculado aqui) = em alta SEM JANELA: total de views
+  //     vs. média histórica do canal. Não expira.
+  // Um vídeo novo bombando é só do período; um clássico de 3 meses é só
+  // vitalício; um hit recente é os dois.
+  const views = Number(v.viewCount);
+  const lifetimePercent = channelAvgViews > 0 ? (views / channelAvgViews) * 100 : null;
+  const isOutlier = lifetimePercent !== null && lifetimePercent >= thresholdPercent;
 
   return {
     id: v.id,
@@ -184,6 +257,10 @@ function projectLibraryItem(v: DbVideoForLibrary): LibraryItem {
     channelAvgViewsAtCheck: v.channelAvgViewsAtCheck,
     outlierPercent: v.outlierPercent,
     flaggedAsOutlier: v.flaggedAsOutlier,
+    // Segundo marcador, vitalício — convive com o do período acima.
+    channelLifetimeAvgViews: channelAvgViews > 0 ? Math.round(channelAvgViews) : null,
+    lifetimeOutlierPercent: lifetimePercent,
+    lifetimeOutlier: isOutlier,
     description: v.description,
     tags: parsedTags,
     thumbnailHdUrl: v.thumbnailHdUrl,
