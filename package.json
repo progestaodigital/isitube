@@ -1,6 +1,6 @@
 {
   "name": "isitube",
-  "version": "0.10.0",
+  "version": "0.11.0",
   "description": "Inteligência competitiva e planejamento de conteúdo para criadores no YouTube",
   "private": true,
   "main": "out/main/index.js",
