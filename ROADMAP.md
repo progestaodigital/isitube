@@ -3,7 +3,7 @@
 > Software desktop de inteligência competitiva e planejamento de conteúdo para criadores no YouTube.
 > Stack: Electron + React + TypeScript + Vite + Prisma + SQLite + Vercel AI SDK + Claude.
 
-**Status atual:** Fases 17-18 concluídas — **Bridge local + MCP** (Claude Code cria/edita/move cards e lê a Biblioteca) · **Kanban instantâneo** (thumbnails saem do payload via protocolo próprio; board em store global com prefetch) + **mudanças do MCP refletem na tela na hora** · **Campo Planejamento** e **tag de formato** no card · **Release v0.10.0 publicada** · **Pendências abertas:** ver `## Pendências conhecidas` (typecheck com 148 erros) · **Próxima:** YouTube SERP via DataForSEO (trocar o ytsr frágil) ou aprofundar os agentes (search intent, calendário)
+**Status atual:** Fases 17-19 concluídas — **Bridge local + MCP** (Claude Code cria/edita/move cards e lê a Biblioteca) · **Kanban instantâneo** + mudanças do MCP ao vivo · **Campo Planejamento** e **tag de formato** no card · **Biblioteca com 2 marcadores de "em alta"** (período e vitalício) · **Release v0.11.0 publicada** · **Pendências abertas:** ver `## Pendências conhecidas` (typecheck com 148 erros) · **Próxima:** YouTube SERP via DataForSEO (trocar o ytsr frágil) ou aprofundar os agentes (search intent, calendário)
 **Início:** Maio de 2026 · **MVP previsto:** 9-12 semanas
 
 ---
@@ -46,6 +46,7 @@ Estas regras valem em **todas as fases** e não devem ser quebradas sem decisão
 | 16 | Thumbnails — criação em 2 campos + conceito por IA | ✅ feito | Brief→prompt editável, "Criar thumbnail" no card com conceito por IA + 3 refs da Biblioteca (v0.8.0) |
 | 17 | Bridge local + MCP pro Claude Code | ✅ feito | HTTP em 127.0.0.1 com bearer token reusando os serviços do app + `mcp-server/` com 6 tools + skill; tag de formato no card (v0.9.0) |
 | 18 | Kanban instantâneo + Planejamento | ✅ feito | Thumbnails fora do payload via `isitube-thumb://` (5,7 MB → 17 kB), board em store global com prefetch, mudanças do MCP ao vivo, campo Planejamento (v0.10.0) |
+| 19 | Biblioteca — dois marcadores de "em alta" | ✅ feito | Selo do período (tração 30d) passa a conviver com um vitalício (views totais vs. média histórica do canal), que não expira (v0.11.0) |
 
 > Nota: as versões entre v0.4.0 e v0.6.2 (lixeira/retention, busca global, auto-update) não foram documentadas como fases neste arquivo. A Fase 11 retoma o registro a partir do trabalho de hardening de licença.
 
@@ -828,6 +829,31 @@ npm run db:reset      # apaga DB de dev e re-aplica todas migrations
 **Commit:** `381678e` · **Release:** v0.10.0.
 
 ---
+## Fase 19 — Biblioteca: dois marcadores de "em alta" ✅
+
+**Objetivo:** Parar de perder a informação de que um vídeo salvo foi um destaque.
+
+**Problema:** o selo sumia dos itens da Biblioteca com o tempo. No fim de cada atualização de canal o app limpa `flaggedAsOutlier` de **todos** os vídeos e só re-aplica nos publicados nos últimos 30 dias — passado disso o vídeo perde o selo mesmo tendo múltiplos da média do canal. (O `outlierPercent` nunca era apagado; só o booleano caía, então o número já estava no banco.)
+
+**Entregue:** dois sinais independentes na Biblioteca, porque respondem a perguntas diferentes:
+- **Em alta no período** (🔥 âmbar) — views/dia nos últimos 30d vs. os outros vídeos ativos do canal. Transitório por design: mede tração de agora. Continua vindo das colunas do banco, intocadas.
+- **Acima da média do canal** (📈 esmeralda) — total de views vs. média histórica de views por vídeo do canal. Não expira. Calculado na leitura do `listLibrary`.
+
+Cruzamento: vídeo novo bombando marca só período; clássico de 3 meses marca só vitalício; hit recente marca os dois. Legenda no topo da página e tooltip em cada selo — duas porcentagens coloridas lado a lado, sem rótulo, parecem a mesma métrica medida duas vezes.
+
+**Arquivos-chave:** `src/main/services/library/index.ts` (`channelLifetimeAverages`, `projectLibraryItem`), `src/renderer/src/pages/LibraryPage.tsx`, `src/shared/types.ts` (`LibraryItem`).
+
+**Decisões importantes:**
+- O vitalício é **calculado na leitura**, não persistido: assim a aba "Vídeos em destaque" e os cards de canal seguem com o critério de tração recente, sem efeito colateral. O preço é recalcular por listagem — irrelevante no volume da Biblioteca (`take: 500`).
+- Média vitalícia sai de `totalViewCount / videoCount` do canal (cobre o catálogo inteiro mesmo monitorando só parte dele), com fallback pra média dos vídeos guardados quando o canal não tem essas stats.
+- Descartado congelar o valor no momento em que salva: não resolveria vídeo salvo já velho, que nunca teve selo pra congelar.
+
+**Verificação:** na base real, os 2 itens salvos estavam **sem selo nenhum** e passaram a mostrar 808% (288k views / média 35,6k) e 396% (78k / 19,7k).
+
+**Commit:** `12d93e9` · **Release:** v0.11.0.
+
+---
+
 
 ## Pendências conhecidas
 
